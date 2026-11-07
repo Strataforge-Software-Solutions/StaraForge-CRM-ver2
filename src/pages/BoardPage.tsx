@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Activity, ArrowDown, ArrowRight, ArrowUpDown, ArrowUpRight, Bell, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, ClipboardList, Ellipsis, Filter, FolderKanban, Layers3, LayoutDashboard, Plus, Search, Settings, SlidersHorizontal, Sparkles, Users, X } from 'lucide-react'
+import { CustomSelect } from '../components/CustomControls'
 
 type Ticket = { id: string; project: string; title: string; priority: 'Low' | 'Medium' | 'High' | 'Urgent'; client: string; date: string; owner: string }
 type TicketColumn = { id: string; name: string; color: string; tickets: Ticket[] }
@@ -42,9 +43,9 @@ function TicketModal({ stage, onClose, onCreate }: { stage: string; onClose: () 
   return <div className="modal-backdrop" onClick={onClose}><form className="modal ticket-modal" onSubmit={submit} onClick={event => event.stopPropagation()}>
     <div className="modal-head"><div><span className="eyebrow">PROJECT BOARD</span><h2>New ticket</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={17}/></button></div>
     <label className="field-label">Ticket title<input autoFocus required value={title} onChange={event => setTitle(event.target.value)} placeholder="What needs to be done?"/></label>
-    <div className="field-pair"><label className="field-label">Project<select value={project} onChange={event => setProject(event.target.value)}><option>VioTrack Website</option><option>Company ABC Website</option><option>Jollibee POS System</option></select></label>
-      <label className="field-label">Stage<select value={column} onChange={event => setColumn(event.target.value)}>{initialBoard.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>
-    <label className="field-label">Priority<select value={priority} onChange={event => setPriority(event.target.value as Ticket['priority'])}><option>Low</option><option>Medium</option><option>High</option><option>Urgent</option></select></label>
+    <div className="field-pair"><label className="field-label">Project<CustomSelect value={project} options={['VioTrack Website', 'Company ABC Website', 'Jollibee POS System']} onChange={setProject}/></label>
+      <label className="field-label">Stage<CustomSelect value={column} options={initialBoard.map(item => ({ label: item.name, value: item.id }))} onChange={setColumn}/></label></div>
+    <label className="field-label">Priority<CustomSelect value={priority} options={['Low', 'Medium', 'High', 'Urgent']} onChange={value => setPriority(value as Ticket['priority'])}/></label>
     <button className="modal-submit" type="submit">Create ticket <Plus size={15}/></button>
   </form></div>
 }
@@ -132,7 +133,7 @@ export default function BoardPage() {
     </div>
     <div className="board-toolbar"><div className="board-tab"><span className="board-tab-icon"><LayoutDashboard size={14}/></span><b>Board</b><i/><span>{total} tickets</span></div>
       <div className="board-tools"><label className="board-search"><Search size={14}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search tickets"/></label>
-        <label className="project-filter"><Filter size={13}/><select value={project} onChange={event => setProject(event.target.value)}><option>All projects</option><option>VioTrack Website</option><option>Company ABC Website</option><option>Jollibee POS System</option></select><ChevronDown size={13}/></label>
+        <label className="project-filter"><Filter size={13}/><CustomSelect className="board-filter-select" showChevron={false} ariaLabel="Filter by project" value={project} options={['All projects', 'VioTrack Website', 'Company ABC Website', 'Jollibee POS System']} onChange={setProject}/><ChevronDown size={13}/></label>
         <button className={`board-tool-button ${sort ? 'tool-selected' : ''}`} onClick={() => setSort(value => !value)}><ArrowUpDown size={13}/>Sort</button>
         <button className="board-tool-button settings-tool" onClick={() => showToast('Board settings are coming soon.')}><SlidersHorizontal size={14}/>Settings</button>
       </div>
@@ -172,8 +173,8 @@ export default function BoardPage() {
       <h2>{activeTicket.ticket.title}</h2>
       <p className="detail-description">Track this work item through the project workflow. Updates are saved in this session.</p>
       <div className="detail-form-grid">
-        <label className="field-label">Status<select value={activeTicket.stage} onChange={event => moveTicket(activeTicket.ticket.id, event.target.value)}>{columns.map(column => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
-        <label className="field-label">Priority<select value={activeTicket.ticket.priority} onChange={event => updatePriority(activeTicket.ticket.id, event.target.value as Ticket['priority'])}><option>Low</option><option>Medium</option><option>High</option><option>Urgent</option></select></label>
+        <label className="field-label">Status<CustomSelect value={activeTicket.stage} options={columns.map(column => ({ label: column.name, value: column.id }))} onChange={value => moveTicket(activeTicket.ticket.id, value)}/></label>
+        <label className="field-label">Priority<CustomSelect value={activeTicket.ticket.priority} options={['Low', 'Medium', 'High', 'Urgent']} onChange={value => updatePriority(activeTicket.ticket.id, value as Ticket['priority'])}/></label>
       </div>
       <div className="detail-properties"><div><span>Project</span><b>{activeTicket.ticket.project}</b></div><div><span>Client</span><b>{activeTicket.ticket.client}</b></div><div><span>Assignee</span><b><i className={`assignee assignee-${activeTicket.ticket.owner.toLowerCase()}`}>{activeTicket.ticket.owner}</i>{activeTicket.ticket.owner}</b></div><div><span>Schedule</span><b>{activeTicket.ticket.date}</b></div></div>
       <div className="detail-activity"><strong>Activity</strong><p><i className="online-dot"/>Ticket is in <b>{columns.find(column => column.id === activeTicket.stage)?.name}</b></p><small>Changes are local and reset when the page reloads.</small></div>

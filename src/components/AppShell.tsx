@@ -62,7 +62,7 @@ export function Topbar({ onAdd, onToggle, collapsed }: { onAdd: () => void; onTo
 
 export function AddNewModal({ onClose }: { onClose: () => void }) {
   const [choice, setChoice] = useState('Lead')
-  return <div className="modal-backdrop" onClick={onClose}><div className="modal" onClick={e => e.stopPropagation()}>
+  return <div className="modal-backdrop quick-create-backdrop" onClick={onClose}><div className="modal" onClick={e => e.stopPropagation()}>
     <div className="modal-head"><div><span className="eyebrow">QUICK CREATE</span><h2>Add something new</h2></div><button className="icon-button" onClick={onClose} aria-label="Close"><X size={17}/></button></div>
     <p>Choose what you’d like to add to your workspace.</p>
     <div className="create-options">{[['Lead', Users], ['Task', ClipboardList], ['Project', FolderKanban], ['Client', BriefcaseBusiness]].map(([label, Icon]) => {

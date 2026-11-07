@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { Activity, ArrowRight, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, Clock, Plus, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Activity, ArrowRight, CalendarDays, CalendarPlus, ChevronDown, ChevronLeft, ChevronRight, Clock, Plus, X } from 'lucide-react'
+import { CustomDatePicker } from '../components/CustomControls'
 
 type CalendarEvent = { id: number; date: string; time: string; title: string; detail: string; kind: 'Meeting' | 'Task' | 'Project' | 'Lead' }
 const initialCalendarEvents: CalendarEvent[] = [
@@ -19,6 +20,21 @@ const startOfCalendarWeek = (date: Date) => {
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate())
   start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
   return start
+}
+
+const calendarKinds: CalendarEvent['kind'][] = ['Meeting', 'Task', 'Project', 'Lead']
+
+function CalendarKindSelect({ value, onChange }: { value: CalendarEvent['kind']; onChange: (kind: CalendarEvent['kind']) => void }) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  return <div className="calendar-kind-select" ref={containerRef} onKeyDown={event => { if (event.key === 'Escape') setOpen(false) }} onBlur={event => { if (!containerRef.current?.contains(event.relatedTarget as Node | null)) setOpen(false) }}>
+    <button type="button" className="calendar-type-trigger" aria-label="Event type" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
+      <span className={`calendar-type-dot ${value.toLowerCase()}`}/>{value}<ChevronDown size={14}/>
+    </button>
+    {open && <div className="calendar-type-options" role="listbox" aria-label="Event type">
+      {calendarKinds.map(kind => <button type="button" role="option" aria-selected={value === kind} className={value === kind ? 'selected' : ''} key={kind} onClick={() => { onChange(kind); setOpen(false) }}><span className={`calendar-type-dot ${kind.toLowerCase()}`}/>{kind}</button>)}
+    </div>}
+  </div>
 }
 
 export default function CalendarPage() {
@@ -97,11 +113,11 @@ export default function CalendarPage() {
         <div className="calendar-legend"><span><i className="meeting"/>Meetings</span><span><i className="task"/>Tasks</span><span><i className="project"/>Projects</span><span><i className="lead"/>Leads</span></div>
       </aside></div>
     </section>
-    {showCreate && <div className="modal-backdrop" onClick={() => setShowCreate(false)}><form className="modal calendar-create-modal" onSubmit={saveEvent} onClick={event => event.stopPropagation()}>
+    {showCreate && <div className="modal-backdrop calendar-modal-backdrop" onClick={() => setShowCreate(false)}><form className="modal calendar-create-modal" onSubmit={saveEvent} onClick={event => event.stopPropagation()}>
       <div className="modal-head"><div><span className="directory-eyebrow">CALENDAR</span><h2>Add event</h2></div><button className="icon-button" type="button" aria-label="Close" onClick={() => setShowCreate(false)}><X size={16}/></button></div>
       <p>Add a meeting, task, or milestone to your calendar.</p>
       <label className="field-label">Event title<input autoFocus required value={draft.title} onChange={event => setDraft(current => ({ ...current, title: event.target.value }))} placeholder="e.g. Client kickoff"/></label>
-      <div className="field-pair"><label className="field-label">Date<input type="date" required value={draft.date} onChange={event => setDraft(current => ({ ...current, date: event.target.value }))}/></label><label className="field-label">Type<select value={draft.kind} onChange={event => setDraft(current => ({ ...current, kind: event.target.value as CalendarEvent['kind'] }))}><option>Meeting</option><option>Task</option><option>Project</option><option>Lead</option></select></label></div>
+      <div className="field-pair"><label className="field-label">Date<CustomDatePicker value={draft.date} onChange={date => setDraft(current => ({ ...current, date }))}/></label><label className="field-label">Type<CalendarKindSelect value={draft.kind} onChange={kind => setDraft(current => ({ ...current, kind }))}/></label></div>
       <label className="field-label">Time<input value={draft.time} onChange={event => setDraft(current => ({ ...current, time: event.target.value }))} placeholder="9:00 AM"/></label>
       <label className="field-label">Related client or project<input value={draft.detail} onChange={event => setDraft(current => ({ ...current, detail: event.target.value }))} placeholder="Optional"/></label>
       {error && <p className="calendar-form-error" role="alert">{error}</p>}

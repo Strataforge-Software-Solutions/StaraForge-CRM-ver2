@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Activity, ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown, ClipboardList, Layers3, Users } from 'lucide-react'
 
 const leads = [
@@ -39,41 +39,58 @@ function CardTitle({ icon: Icon, title, action }: { icon: typeof Activity; title
 
 function RangeSelect() {
   const [range, setRange] = useState('Last 30 days')
-  return <button className="range-select" onClick={() => setRange(range === 'Last 30 days' ? 'Last 7 days' : 'Last 30 days')}>{range}<ChevronDown size={12} /></button>
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const options = ['Last 7 days', 'Last 30 days', 'Last 90 days', 'This year']
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [])
+  return <div className="range-select-wrap" ref={menuRef} onKeyDown={event => { if (event.key === 'Escape') setOpen(false) }}>
+    <button type="button" className="range-select" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>{range}<ChevronDown size={12} /></button>
+    {open && <div className="range-select-menu" role="listbox" aria-label="Date range">{options.map(option => <button type="button" role="option" aria-selected={range === option} className={range === option ? 'selected' : ''} key={option} onClick={() => { setRange(option); setOpen(false) }}>{option}{range === option && <Check size={12}/>}</button>)}</div>}
+  </div>
 }
 
-function LeadChart() {
+type PerformanceMetric = 'leads' | 'won'
+
+function LeadChart({ activeMetric, onMetricHover }: { activeMetric: PerformanceMetric | null; onMetricHover: (metric: PerformanceMetric | null) => void }) {
   return <div className="chart-wrap">
     <div className="chart-y-labels"><span>5</span><span>4</span><span>3</span><span>2</span><span>0</span></div>
     <svg className="chart" viewBox="0 0 580 165" preserveAspectRatio="none" role="img" aria-label="Lead performance line chart">
       <defs><linearGradient id="blueFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#347cf2" stopOpacity=".16"/><stop offset="1" stopColor="#347cf2" stopOpacity="0"/></linearGradient></defs>
       {[22,52,82,112,142].map(y => <line key={y} x1="0" x2="580" y1={y} y2={y} stroke="#e9edf2" strokeDasharray="2 5" />)}
-      <path d="M0 142 C75 142 95 142 145 142 S220 151 270 142 S333 119 375 94 S434 76 470 76 S530 78 580 82 L580 142 L0 142Z" fill="url(#blueFill)" />
-      <path d="M0 142 C75 142 95 142 145 142 S220 151 270 142 S333 119 375 94 S434 76 470 76 S530 78 580 82" fill="none" stroke="#3880f5" strokeWidth="2.5" />
-      <path d="M0 142 C140 142 205 142 270 142 S335 119 375 94 S438 65 470 54 S536 32 580 18" fill="none" stroke="#ff5a1f" strokeWidth="2.5" />
+      <path d="M0 142 C75 142 95 142 145 142 S220 151 270 142 S333 119 375 94 S434 76 470 76 S530 78 580 82 L580 142 L0 142Z" fill="url(#blueFill)" pointerEvents="none" />
+      <path className="performance-line won-line" d="M0 142 C75 142 95 142 145 142 S220 151 270 142 S333 119 375 94 S434 76 470 76 S530 78 580 82" fill="none" stroke="#3880f5" strokeWidth="2.5" pointerEvents="stroke" style={{ opacity: activeMetric && activeMetric !== 'won' ? .32 : 1, strokeWidth: activeMetric === 'won' ? 3.8 : 2.5 }} onPointerEnter={() => onMetricHover('won')} onPointerLeave={() => onMetricHover(null)} />
+      <path className="performance-line leads-line" d="M0 142 C140 142 205 142 270 142 S335 119 375 94 S438 65 470 54 S536 32 580 18" fill="none" stroke="#ff5a1f" strokeWidth="2.5" pointerEvents="stroke" style={{ opacity: activeMetric && activeMetric !== 'leads' ? .32 : 1, strokeWidth: activeMetric === 'leads' ? 3.8 : 2.5 }} onPointerEnter={() => onMetricHover('leads')} onPointerLeave={() => onMetricHover(null)} />
     </svg>
     <div className="chart-x-labels"><span>Oct 7</span><span>Oct 21</span><span>Nov 4</span></div>
   </div>
 }
 
 function PerformanceCard() {
+  const [hoveredMetric, setHoveredMetric] = useState<PerformanceMetric | null>(null)
   return <section className="card performance-card">
     <CardTitle icon={Activity} title="Lead Performance" action={<RangeSelect />} />
     <div className="chart-summary"><div><span className="muted">Total leads</span><b>5</b></div><span className="won-pill"><i />3 won</span></div>
-    <LeadChart />
-    <div className="chart-legend"><span><i className="orange-dot"/>Leads <b>5</b></span><span><i className="blue-dot"/>Won <b>3</b></span></div>
+    <LeadChart activeMetric={hoveredMetric} onMetricHover={setHoveredMetric}/>
+    <div className="chart-legend">{([{ key: 'leads', label: 'Leads', count: '5', dot: 'orange-dot' }, { key: 'won', label: 'Won', count: '3', dot: 'blue-dot' }] as const).map(item => <button type="button" key={item.key} className={`chart-legend-item${hoveredMetric === item.key ? ' is-active' : ''}`} onPointerEnter={() => setHoveredMetric(item.key)} onPointerLeave={() => setHoveredMetric(null)} onFocus={() => setHoveredMetric(item.key)} onBlur={() => setHoveredMetric(null)}><i className={item.dot}/>{item.label}<b>{item.count}</b></button>)}</div>
   </section>
 }
 
 function SourcesCard() {
+  const [hoveredSource, setHoveredSource] = useState<string | null>(null)
   const sources = [{ label: 'Referral', n: 2, pct: 40, color: 'orange' }, { label: 'Unspecified', n: 1, pct: 20, color: 'blue' }, { label: 'Inquiry Form', n: 1, pct: 20, color: 'green' }, { label: 'Social Media: Facebook', n: 1, pct: 20, color: 'purple' }]
   return <section className="card sources-card">
     <CardTitle icon={Activity} title="Lead Sources" action={<RangeSelect />} />
     <div className="source-total"><span className="muted">Total leads</span><b>5</b></div>
-    <div className="source-bars">{sources.map(source => <div className="source-row" key={source.label}>
+    <div className="source-bars">{sources.map(source => <div className={`source-row${hoveredSource === source.label ? ' is-active' : ''}`} key={source.label} onPointerEnter={() => setHoveredSource(source.label)} onPointerLeave={() => setHoveredSource(null)} onFocus={() => setHoveredSource(source.label)} onBlur={() => setHoveredSource(null)} tabIndex={0} aria-label={`${source.label}: ${source.n} leads, ${source.pct}%`}>
       <span>{source.label}</span><div className="bar-track"><i className={source.color} style={{ width: `${source.pct}%` }} /></div><b>{source.n}</b><small>{source.pct}%</small>
     </div>)}</div>
-    <div className="source-chips">{sources.map(s => <span key={s.label}><i className={s.color} />{s.label === 'Social Media: Facebook' ? 'Social Media: Facebook' : s.label}<b>{s.n}</b></span>)}</div>
+    <div className="source-chips">{sources.map(s => <span key={s.label} className={hoveredSource === s.label ? 'is-active' : ''} onPointerEnter={() => setHoveredSource(s.label)} onPointerLeave={() => setHoveredSource(null)} onFocus={() => setHoveredSource(s.label)} onBlur={() => setHoveredSource(null)} tabIndex={0} aria-label={`${s.label}: ${s.n} leads`}><i className={s.color} />{s.label}<b>{s.n}</b></span>)}</div>
     <div className="source-insight"><span><i className="orange-dot"/><b>Referral</b> is the leading source</span><strong>2 leads · 40%</strong></div>
   </section>
 }
