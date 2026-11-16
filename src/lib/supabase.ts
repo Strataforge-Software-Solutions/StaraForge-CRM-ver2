@@ -169,8 +169,8 @@ export function sessionAssurance(session: SupabaseSession): string {
 }
 
 export async function listTotpFactors(session: SupabaseSession): Promise<Array<{ id: string; status: string; friendly_name?: string }>> {
-  const result = await authRequest<{ totp?: Array<{ id: string; status: string; friendly_name?: string }> }>('factors', {}, session.access_token)
-  return result.totp ?? []
+  const user = await authRequest<{ factors?: Array<{ id: string; status: string; friendly_name?: string; factor_type?: string }> }>('user', {}, session.access_token)
+  return (user.factors ?? []).filter(factor => factor.factor_type === 'totp')
 }
 
 export async function enrollTotp(session: SupabaseSession) {
