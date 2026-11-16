@@ -13,7 +13,7 @@ export type SupabaseSession = {
   user: { id: string; email?: string; [key: string]: unknown }
 }
 
-export type WorkspaceMembership = { workspace_id: string; role: string }
+export type WorkspaceMembership = { workspace_id: string; user_id: string; email: string; display_name: string; role: string; created_at: string }
 
 type AuthResponse = { access_token?: string; refresh_token?: string; expires_at?: number; expires_in?: number; token_type?: string; user?: SupabaseSession['user']; error?: string; msg?: string; message?: string }
 
@@ -221,7 +221,7 @@ export async function removeTotpFactor(session: SupabaseSession, factorId: strin
 }
 
 export async function getWorkspaceMembership(session: SupabaseSession): Promise<WorkspaceMembership | null> {
-  const rows = await restRequest<WorkspaceMembership[]>('workspace_members?select=workspace_id,role&limit=1', session)
+  const rows = await restRequest<WorkspaceMembership[]>('workspace_members?select=workspace_id,user_id,email,display_name,role,created_at&limit=1', session)
   return rows[0] ?? null
 }
 

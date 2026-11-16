@@ -13,6 +13,7 @@ async function apiRequest(path: string, session: { access_token: string }, init:
     ...init,
     headers: { Authorization: `Bearer ${session.access_token}`, ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers },
   })
+  if (!(response.headers.get('content-type') ?? '').includes('application/json')) throw new Error('Workspace member API is unavailable.')
   const body = await response.json().catch(() => ({})) as Record<string, unknown>
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : 'Workspace access could not be loaded.')
   return body
@@ -28,6 +29,7 @@ export default function AccessPage() {
   const [loading, setLoading] = useState(true)
   const [canManage, setCanManage] = useState(false)
   const [pageError, setPageError] = useState('')
+  const [rosterNotice, setRosterNotice] = useState('')
   const [notice, setNotice] = useState('')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [reviewing, setReviewing] = useState(false)
@@ -39,6 +41,7 @@ export default function AccessPage() {
   const loadMembers = useCallback(async () => {
     setLoading(true)
     setPageError('')
+    setRosterNotice('')
     try {
       const workspaceId = getCurrentDatabaseWorkspaceId()
       const session = await getCurrentSession()
@@ -47,8 +50,30 @@ export default function AccessPage() {
       const allowed = membership?.role === 'owner' || membership?.role === 'admin'
       setCanManage(allowed)
       if (!allowed) { setMembers([]); return }
-      const result = await apiRequest(`/api/workspace-members?workspaceId=${encodeURIComponent(workspaceId)}`, session)
-      setMembers(Array.isArray(result.members) ? result.members as WorkspaceMember[] : [])
+      if (!membership) throw new Error('Your account is not connected to a workspace.')
+      const metadata = session.user.user_metadata as { full_name?: unknown; name?: unknown } | undefined
+      const ownMember: WorkspaceMember = {
+        email: membership.email || session.user.email || '',
+        displayName: String(metadata?.full_name ?? metadata?.name ?? membership.display_name ?? session.user.email?.split('@')[0] ?? 'Workspace member'),
+        role: membership.role as WorkspaceRole,
+        status: 'active',
+        createdAt: membership.created_at,
+      }
+      try {
+        const result = await apiRequest(`/api/workspace-members?workspaceId=${encodeURIComponent(workspaceId)}`, session)
+        if (!Array.isArray(result.members)) {
+          setMembers([ownMember])
+          setRosterNotice('Your account is connected, but the full member roster is unavailable in this environment.')
+          return
+        }
+        const roster = result.members as WorkspaceMember[]
+        const includesCurrentAccount = roster.some(member => member.email.toLowerCase() === ownMember.email.toLowerCase())
+        setMembers(includesCurrentAccount ? roster : [...roster, ownMember])
+        if (!includesCurrentAccount) setRosterNotice('Your account is connected and shown below, but it was missing from the roster response.')
+      } catch {
+        setMembers([ownMember])
+        setRosterNotice('Your account is connected, but the full member roster could not be loaded in this environment.')
+      }
     } catch (cause) {
       setPageError(cause instanceof Error ? cause.message : 'Workspace members could not be loaded.')
     } finally { setLoading(false) }
@@ -97,6 +122,7 @@ export default function AccessPage() {
       {!canManage && !loading && !pageError && <div className="admin-note access-admin-note"><ShieldCheck size={18}/><div><b>Administrator access required</b><p>Only workspace owners and admins can view the member list or send invitations.</p></div></div>}
       {loading && <div className="admin-empty" role="status"><LoaderCircle size={22} className="workspace-inline-spinner"/><b>Loading workspace members…</b></div>}
       {!loading && pageError && <div className="admin-empty access-error" role="alert"><CircleAlert size={22}/><b>Workspace members could not be loaded</b><span>{pageError}</span><button className="admin-cancel" type="button" onClick={() => void loadMembers()}>Try again</button></div>}
+      {!loading && rosterNotice && <div className="admin-note access-admin-note" role="status"><ShieldCheck size={18}/><div><b>Account access confirmed</b><p>{rosterNotice}</p></div></div>}
       {!loading && canManage && !pageError && members.length === 0 && <div className="admin-empty"><Users size={22}/><b>No workspace members yet</b><span>Invite a teammate to give them secure access to this workspace.</span></div>}
       {!loading && canManage && !pageError && members.length > 0 && <div className="admin-table-scroll access-members-scroll"><table className="admin-table"><thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Added</th></tr></thead><tbody>
         {members.map(member => <tr key={member.email}><td><div className="admin-member"><span className="admin-avatar">{member.displayName.slice(0, 1).toUpperCase() || 'U'}</span><span><b>{member.displayName}</b><small>{member.email}</small></span></div></td><td><span className="admin-role"><ShieldCheck size={14}/>{member.role[0].toUpperCase() + member.role.slice(1)}</span></td><td><span className={`admin-status${member.status === 'pending' ? ' pending' : ''}`}><i/>{member.status === 'pending' ? 'Invitation pending' : 'Active'}</span></td><td>{displayDate(member.createdAt)}</td></tr>)}
