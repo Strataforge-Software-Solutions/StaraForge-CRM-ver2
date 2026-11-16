@@ -2,6 +2,7 @@ const projectUrl = (import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '')
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
 const sessionStorageKey = 'strataforge.auth.session'
 const verifierStorageKey = 'strataforge.auth.pkce-verifier'
+const pendingInviteStorageKey = 'strataforge.auth.pending-invite'
 
 export type SupabaseSession = {
   access_token: string
@@ -131,6 +132,17 @@ export async function startGoogleSignIn() {
 
 export async function consumeGoogleCallback(): Promise<SupabaseSession | null> {
   const currentUrl = new URL(window.location.href)
+  const queryType = currentUrl.searchParams.get('type')
+  const tokenHash = currentUrl.searchParams.get('token_hash')
+  if (tokenHash && queryType === 'invite') {
+    const result = await authRequest<AuthResponse>('verify', { method: 'POST', body: JSON.stringify({ token_hash: tokenHash, type: 'invite' }) })
+    if (!result.access_token || !result.refresh_token || !result.user) throw new Error('The invitation link is invalid or has expired. Ask an administrator to send a new invitation.')
+    localStorage.setItem(pendingInviteStorageKey, 'true')
+    window.history.replaceState({}, document.title, currentUrl.pathname)
+    const session = { ...result, expires_at: result.expires_at ?? Math.floor(Date.now() / 1000) + (result.expires_in ?? 3600) } as SupabaseSession
+    storeSession(session, false)
+    return session
+  }
   const code = currentUrl.searchParams.get('code')
   const fragment = new URLSearchParams(currentUrl.hash.slice(1))
   if (code) {
@@ -147,6 +159,7 @@ export async function consumeGoogleCallback(): Promise<SupabaseSession | null> {
   const accessToken = fragment.get('access_token')
   const refreshToken = fragment.get('refresh_token')
   if (!accessToken || !refreshToken) return null
+  if (fragment.get('type') === 'invite' || queryType === 'invite') localStorage.setItem(pendingInviteStorageKey, 'true')
   const expiresIn = Number(fragment.get('expires_in') ?? 3600)
   const user = await authRequest<SupabaseSession['user']>('user', {}, accessToken)
   const session: SupabaseSession = { access_token: accessToken, refresh_token: refreshToken, expires_in: expiresIn, expires_at: Math.floor(Date.now() / 1000) + expiresIn, user }
@@ -157,7 +170,20 @@ export async function consumeGoogleCallback(): Promise<SupabaseSession | null> {
 
 export async function signOut() {
   const session = await getCurrentSession()
-  try { if (session) await authRequest('logout?scope=global', { method: 'POST' }, session.access_token) } finally { storeSession(null) }
+  try { if (session) await authRequest('logout?scope=global', { method: 'POST' }, session.access_token) } finally { localStorage.removeItem(pendingInviteStorageKey); storeSession(null) }
+}
+
+export function isPendingWorkspaceInvite() {
+  return localStorage.getItem(pendingInviteStorageKey) === 'true'
+}
+
+export function clearPendingWorkspaceInvite() {
+  localStorage.removeItem(pendingInviteStorageKey)
+}
+
+export async function updateOwnPassword(session: SupabaseSession, password: string) {
+  await authRequest('user', { method: 'PUT', body: JSON.stringify({ password }) }, session.access_token)
+  return session
 }
 
 export function sessionAssurance(session: SupabaseSession): string {

@@ -26,6 +26,10 @@ export function configureDatabaseWorkspace(workspaceId: string | null) {
   setStatus(workspaceId ? 'connecting' : 'error', workspaceId ? '' : 'Sign in to connect to the workspace database.')
 }
 
+export function getCurrentDatabaseWorkspaceId() {
+  return currentWorkspaceId
+}
+
 export function useDatabaseStatus() {
   const current = useSyncExternalStore(listener => { statusListeners.add(listener); return () => statusListeners.delete(listener) }, () => status, () => 'connecting')
   return { status: current, error: errorMessage }

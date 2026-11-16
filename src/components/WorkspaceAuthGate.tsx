@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { ArrowRight, CircleCheck, CircleX, KeyRound, LoaderCircle, LockKeyhole, Mail, RefreshCw, ShieldCheck } from 'lucide-react'
 import { configureDatabaseWorkspace } from '../lib/database'
 import {
-  authChangeEvent, authSessionStorageKey, consumeGoogleCallback, enrollTotp, getCurrentSession, inspectSupabaseConfig,
+  authChangeEvent, authSessionStorageKey, clearPendingWorkspaceInvite, consumeGoogleCallback, enrollTotp, getCurrentSession, inspectSupabaseConfig,
   getWorkspaceMembership, isSupabaseConfigured, listTotpFactors, removeTotpFactor,
-  sessionAssurance, signInWithPassword, startGoogleSignIn, signOut, verifyTotp,
+  isPendingWorkspaceInvite, sessionAssurance, signInWithPassword, startGoogleSignIn, signOut, updateOwnPassword, verifyTotp,
   type SupabaseSession,
 } from '../lib/supabase'
 
-type AuthPhase = 'loading' | 'sign-in' | 'challenge' | 'enrollment' | 'workspace' | 'no-workspace' | 'configuration-error'
+type AuthPhase = 'loading' | 'sign-in' | 'invite-password' | 'challenge' | 'enrollment' | 'workspace' | 'no-workspace' | 'configuration-error'
 type Enrollment = { factorId: string; qrCode: string; secret: string }
 
 export default function WorkspaceAuthGate({ children }: { children: ReactNode }) {
@@ -18,6 +18,8 @@ export default function WorkspaceAuthGate({ children }: { children: ReactNode })
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [invitePassword, setInvitePassword] = useState('')
+  const [invitePasswordConfirm, setInvitePasswordConfirm] = useState('')
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -37,6 +39,11 @@ export default function WorkspaceAuthGate({ children }: { children: ReactNode })
   const authorize = useCallback(async (activeSession: SupabaseSession) => {
     setSession(activeSession)
     setError('')
+    if (isPendingWorkspaceInvite()) {
+      configureDatabaseWorkspace(null)
+      setPhase('invite-password')
+      return
+    }
     if (sessionAssurance(activeSession) !== 'aal2') {
       configureDatabaseWorkspace(null)
       const factors = await listTotpFactors(activeSession)
@@ -107,6 +114,21 @@ export default function WorkspaceAuthGate({ children }: { children: ReactNode })
     finally { setBusy(false) }
   }
 
+  const handleInvitePassword = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!session) return
+    if (invitePassword.length < 8) { setError('Use at least 8 characters for your password.'); return }
+    if (invitePassword !== invitePasswordConfirm) { setError('The passwords do not match.'); return }
+    setBusy(true); setError('')
+    try {
+      const updatedSession = await updateOwnPassword(session, invitePassword)
+      clearPendingWorkspaceInvite()
+      setInvitePassword(''); setInvitePasswordConfirm('')
+      await authorize(updatedSession)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Your password could not be saved.') }
+    finally { setBusy(false) }
+  }
+
   const handleGoogleSignIn = async () => {
     setBusy(true); setError('')
     try { await startGoogleSignIn() }
@@ -159,6 +181,14 @@ export default function WorkspaceAuthGate({ children }: { children: ReactNode })
         <div className="workspace-auth-divider"><span>or</span></div>
         <button type="button" className="workspace-auth-google" onClick={() => void handleGoogleSignIn()} disabled={busy}><span className="google-g">G</span>Continue with Google</button>
         <small className="workspace-auth-note">Workspace access is limited to invited members.</small>
+      </>}
+      {phase === 'invite-password' && <>
+        <h1>Finish setting up your account</h1><p>Create a password for your StrataForge workspace account. You’ll set up authenticator verification next.</p>
+        <form className="workspace-auth-form" onSubmit={handleInvitePassword}>
+          <label>Create password<span className="workspace-auth-input"><LockKeyhole size={15}/><input autoFocus autoComplete="new-password" type="password" minLength={8} required value={invitePassword} onChange={event => setInvitePassword(event.target.value)} placeholder="At least 8 characters"/></span></label>
+          <label>Confirm password<span className="workspace-auth-input"><LockKeyhole size={15}/><input autoComplete="new-password" type="password" minLength={8} required value={invitePasswordConfirm} onChange={event => setInvitePasswordConfirm(event.target.value)} placeholder="Re-enter your password"/></span></label>
+          <button className="workspace-auth-primary" type="submit" disabled={busy || invitePassword.length < 8 || invitePassword !== invitePasswordConfirm}>{busy ? <LoaderCircle size={15}/> : <ShieldCheck size={15}/>}Save password and continue</button>
+        </form>
       </>}
       {phase === 'challenge' && <>
         <h1>Verify it’s you</h1><p>Enter the six-digit code from your authenticator app to continue.</p>
