@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Bell, Check, Clock3, Globe2, LockKeyhole, Save, UserRound } from 'lucide-react'
+import { Bell, Camera, Check, Clock3, Globe2, ImagePlus, LoaderCircle, LockKeyhole, Save, Trash2, UserRound, X } from 'lucide-react'
 import { CustomSelect } from '../components/CustomControls'
 import { showWorkspaceToast } from '../lib/workspaceToast'
-import { getCurrentSession, type SupabaseSession } from '../lib/supabase'
+import { announceProfilePhotoChange, getCurrentSession, getOwnProfilePhoto, removeOwnProfilePhoto, uploadOwnProfilePhoto, type SupabaseSession } from '../lib/supabase'
 import { useDatabaseCollection } from '../lib/database'
 
 type Preferences = { name: string; language: string; timeZone: string; emailUpdates: boolean; taskReminders: boolean; productUpdates: boolean }
@@ -12,11 +12,35 @@ export default function SettingsPage() {
   const [session, setSession] = useState<SupabaseSession | null>(null)
   const [settingsByUser, setSettingsByUser] = useDatabaseCollection<Record<string, Preferences>>('accountSettings', {})
   const [saved, setSaved] = useState(false)
-  useEffect(() => { void getCurrentSession().then(setSession) }, [])
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
+  const [photoLoading, setPhotoLoading] = useState(true)
+  const [photoSaving, setPhotoSaving] = useState(false)
+  const [photoError, setPhotoError] = useState('')
+  useEffect(() => {
+    let active = true
+    void getCurrentSession().then(async current => {
+      if (!active) return
+      setSession(current)
+      if (!current) { setPhotoLoading(false); return }
+      try {
+        const url = await getOwnProfilePhoto(current)
+        if (active) setPhotoUrl(url)
+      } catch (error) {
+        if (active) setPhotoError(error instanceof Error ? error.message : 'Profile photo could not be loaded.')
+      } finally {
+        if (active) setPhotoLoading(false)
+      }
+    })
+    return () => { active = false }
+  }, [])
+  useEffect(() => () => { if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl) }, [photoPreviewUrl])
   const userId = session?.user.id ?? ''
   const metadata = session?.user.user_metadata as { full_name?: string; name?: string } | undefined
   const profileName = metadata?.full_name ?? metadata?.name ?? session?.user.email?.split('@')[0] ?? ''
   const settings: Preferences = { ...defaults, name: profileName, ...(userId ? settingsByUser[userId] : {}) }
+  const initial = settings.name.trim().charAt(0).toUpperCase() || '?'
   const update = <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
     if (!userId) return
     const next = { ...settings, [key]: value }
@@ -27,13 +51,59 @@ export default function SettingsPage() {
     if (userId) setSettingsByUser(current => ({ ...current, [userId]: { ...defaults, name: profileName } }))
     setSaved(false)
   }
+  const choosePhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) return
+    setPhotoError('')
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setPhotoError('Choose a JPG, PNG, or WebP image.'); return }
+    if (file.size < 1 || file.size > 5 * 1024 * 1024) { setPhotoError('Choose an image up to 5 MB.'); return }
+    setPhotoPreviewUrl(URL.createObjectURL(file))
+    setPendingPhoto(file)
+  }
+  const cancelPhotoPreview = () => {
+    if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl)
+    setPhotoPreviewUrl(null)
+    setPendingPhoto(null)
+    setPhotoError('')
+  }
+  const savePhoto = async () => {
+    if (!pendingPhoto) return
+    setPhotoSaving(true)
+    setPhotoError('')
+    try {
+      const current = await getCurrentSession()
+      if (!current) throw new Error('Your sign-in session expired. Sign in again.')
+      const nextUrl = await uploadOwnProfilePhoto(current, pendingPhoto)
+      setPhotoUrl(nextUrl)
+      announceProfilePhotoChange(nextUrl)
+      cancelPhotoPreview()
+      showWorkspaceToast('Profile photo updated.')
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : 'Profile photo could not be uploaded.')
+    } finally { setPhotoSaving(false) }
+  }
+  const removePhoto = async () => {
+    setPhotoSaving(true)
+    setPhotoError('')
+    try {
+      const current = await getCurrentSession()
+      if (!current) throw new Error('Your sign-in session expired. Sign in again.')
+      await removeOwnProfilePhoto(current)
+      setPhotoUrl(null)
+      announceProfilePhotoChange(null)
+      showWorkspaceToast('Profile photo removed.')
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : 'Profile photo could not be removed.')
+    } finally { setPhotoSaving(false) }
+  }
 
   return <div className="directory-page account-settings-page">
     <div className="directory-heading"><div><span className="directory-eyebrow">ACCOUNT</span><h1>Account settings</h1><p>Manage your profile, workspace notifications, and regional preferences.</p></div></div>
     <form className="account-settings-layout" onSubmit={event => { event.preventDefault(); setSaved(true); showWorkspaceToast('Settings saved to Supabase.') }}>
       <section className="account-settings-card">
         <div className="account-settings-head"><span><UserRound size={19}/></span><div><h2>Profile</h2><p>Basic information associated with your account.</p></div></div>
-        <div className="account-settings-body"><div className="account-settings-fields"><label>Display name<input required value={settings.name} onChange={event => update('name', event.target.value)} disabled={!userId}/></label><label>Email address<input type="email" value={session?.user.email ?? ''} readOnly/></label></div><div className="account-profile-meta"><span className="account-settings-avatar">{settings.name.trim().slice(0, 1).toUpperCase() || '?'}</span><span><b>{settings.name || 'Your name'}</b><small>Signed in with Supabase</small></span></div></div>
+        <div className="account-settings-body"><div className="account-settings-fields"><label>Display name<input required value={settings.name} onChange={event => update('name', event.target.value)} disabled={!userId}/></label><label>Email address<input type="email" value={session?.user.email ?? ''} readOnly/></label></div><div className="account-profile-meta profile-photo-row"><span className="account-settings-avatar profile-photo-preview">{photoPreviewUrl || photoUrl ? <img src={photoPreviewUrl ?? photoUrl ?? ''} alt=""/> : <span>{initial}</span>}</span><span className="profile-photo-copy"><b>Profile photo</b><small>{photoLoading ? 'Loading your photo…' : pendingPhoto ? 'Preview ready. Save to apply this photo.' : 'JPG, PNG, or WebP · up to 5 MB'}</small></span><div className="profile-photo-actions"><label className="profile-photo-button" aria-disabled={!userId || photoSaving}><Camera size={14}/>Change photo<input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose a profile photo" disabled={!userId || photoSaving} onChange={choosePhoto}/></label>{pendingPhoto && <><button type="button" className="profile-photo-save" onClick={() => void savePhoto()} disabled={photoSaving}>{photoSaving ? <LoaderCircle size={13} className="profile-photo-spinner"/> : <ImagePlus size={13}/>}Save photo</button><button type="button" className="profile-photo-cancel" onClick={cancelPhotoPreview} disabled={photoSaving}><X size={13}/>Cancel</button></>}{photoUrl && !pendingPhoto && <button type="button" className="profile-photo-remove" onClick={() => void removePhoto()} disabled={photoSaving}>{photoSaving ? <LoaderCircle size={13} className="profile-photo-spinner"/> : <Trash2 size={13}/>}Remove</button>}</div>{photoError && <div className="profile-photo-error" role="alert">{photoError}</div>}</div></div>
       </section>
 
       <section className="account-settings-card">

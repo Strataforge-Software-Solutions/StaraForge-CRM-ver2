@@ -49,11 +49,12 @@ export function Sidebar({ collapsed, onToggle, active, onNavigate, onLogout }: {
   </aside>
 }
 
-export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect, onNavigate, onTimeout, onLogout }: { onAdd: (type?: CreateRecordType) => void; onToggle: () => void; collapsed: boolean; searchItems: GlobalSearchItem[]; onSearchSelect: (item: GlobalSearchItem) => void; onNavigate: (page: string) => void; onTimeout: () => void; onLogout: () => void }) {
+export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect, onNavigate, onTimeout, onLogout, accountName, accountEmail, profilePhotoUrl }: { onAdd: (type?: CreateRecordType) => void; onToggle: () => void; collapsed: boolean; searchItems: GlobalSearchItem[]; onSearchSelect: (item: GlobalSearchItem) => void; onNavigate: (page: string) => void; onTimeout: () => void; onLogout: () => void; accountName: string; accountEmail: string; profilePhotoUrl: string | null }) {
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState(false)
   const [open, setOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [photoFailed, setPhotoFailed] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const searchRef = useRef<HTMLFormElement>(null)
   const accountMenuRef = useRef<HTMLDivElement>(null)
@@ -63,6 +64,9 @@ export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect
     ? (['Lead', 'Client', 'Project', 'Task', 'Page'] as const).map(kind => ({ kind, items: filtered.filter(item => item.kind === kind).slice(0, 5) })).filter(group => group.items.length)
     : defaultPages.length ? [{ kind: 'Page' as const, items: defaultPages }] : []
   const results = groups.flatMap(group => group.items)
+  const accountInitial = accountName.trim().charAt(0).toUpperCase() || '?'
+  const showPhoto = Boolean(profilePhotoUrl && !photoFailed)
+  useEffect(() => { setPhotoFailed(false) }, [profilePhotoUrl])
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       if (!searchRef.current?.contains(event.target as Node)) setOpen(false)
@@ -115,9 +119,9 @@ export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect
       <button className="add-button" onClick={() => onAdd()}><Plus size={14} /> <span>Add New</span></button>
       <button className={`icon-button notification ${notice ? 'noticed' : ''}`} onClick={() => setNotice(!notice)} aria-label="Notifications"><Bell size={16} /><i /></button>
       <div className="account-menu-anchor" ref={accountMenuRef}>
-        <button className={`avatar account-avatar ${accountOpen ? 'open' : ''}`} title="Account menu" aria-label="Open account menu" aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen(value => !value)}>B</button>
+        <button className={`avatar account-avatar ${showPhoto ? 'has-photo' : ''} ${accountOpen ? 'open' : ''}`} title={`Account menu for ${accountName}`} aria-label={`Open account menu for ${accountName}`} aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen(value => !value)}>{showPhoto ? <img src={profilePhotoUrl ?? ''} alt="" onError={() => setPhotoFailed(true)}/> : <span>{accountInitial}</span>}</button>
         {accountOpen && <div className="account-menu" role="menu" aria-label="Account menu">
-          <div className="account-menu-person"><span className="account-menu-avatar">S</span><span><b>Workspace member</b><small>Supabase authenticated</small></span></div>
+          <div className="account-menu-person"><span className="account-menu-avatar">{showPhoto ? <img src={profilePhotoUrl ?? ''} alt="" onError={() => setPhotoFailed(true)}/> : accountInitial}</span><span><b>{accountName}</b><small>{accountEmail || 'Supabase authenticated'}</small></span></div>
           <button role="menuitem" onClick={() => { setAccountOpen(false); onTimeout() }}><Coffee size={15}/>Take a break</button>
           <button role="menuitem" onClick={() => { setAccountOpen(false); onNavigate('Settings') }}><Settings size={15}/>Account settings</button>
           <div className="account-menu-divider" />

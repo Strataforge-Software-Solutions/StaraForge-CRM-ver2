@@ -220,6 +220,37 @@ export async function removeTotpFactor(session: SupabaseSession, factorId: strin
   return authRequest(`factors/${encodeURIComponent(factorId)}`, { method: 'DELETE' }, session.access_token)
 }
 
+export const profilePhotoChangedEvent = 'strataforge:profile-photo-change'
+
+export function announceProfilePhotoChange(photoUrl: string | null) {
+  window.dispatchEvent(new CustomEvent(profilePhotoChangedEvent, { detail: photoUrl }))
+}
+
+async function profilePhotoRequest(session: SupabaseSession, method: 'GET' | 'POST' | 'DELETE', file?: File) {
+  const form = file ? new FormData() : undefined
+  if (file) form?.append('photo', file)
+  const response = await fetch('/api/profile-photo', {
+    method,
+    headers: { Authorization: `Bearer ${session.access_token}` },
+    ...(form ? { body: form } : {}),
+  })
+  const body = await response.json().catch(() => ({})) as { photoUrl?: string | null; error?: string }
+  if (!response.ok) throw new Error(body.error ?? 'Profile photo could not be updated.')
+  return body.photoUrl ?? null
+}
+
+export function getOwnProfilePhoto(session: SupabaseSession) {
+  return profilePhotoRequest(session, 'GET')
+}
+
+export function uploadOwnProfilePhoto(session: SupabaseSession, file: File) {
+  return profilePhotoRequest(session, 'POST', file)
+}
+
+export async function removeOwnProfilePhoto(session: SupabaseSession) {
+  await profilePhotoRequest(session, 'DELETE')
+}
+
 export async function getWorkspaceMembership(session: SupabaseSession): Promise<WorkspaceMembership | null> {
   const rows = await restRequest<WorkspaceMembership[]>('workspace_members?select=workspace_id,role&limit=1', session)
   return rows[0] ?? null
