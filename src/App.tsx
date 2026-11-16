@@ -20,7 +20,8 @@ import SecurityPage from './pages/SecurityPage'
 import WorkspaceAuthGate from './components/WorkspaceAuthGate'
 import { updateDatabaseCollection, useDatabaseCollection, useDatabaseStatus } from './lib/database'
 import { showWorkspaceToast, workspaceToastEvent } from './lib/workspaceToast'
-import { authChangeEvent, getCurrentSession, getOwnProfilePhoto, profilePhotoChangedEvent, signOut, type SupabaseSession } from './lib/supabase'
+import { authChangeEvent, getCurrentSession, signOut, type SupabaseSession } from './lib/supabase'
+import { emptyProfilePhotos } from './lib/profilePhoto'
 
 function formatElapsed(milliseconds: number) {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -55,7 +56,7 @@ function WorkspaceApp() {
   const [isTimedOut, setIsTimedOut] = useState(false)
   const [workspaceToast, setWorkspaceToast] = useState('')
   const [session, setSession] = useState<SupabaseSession | null>(null)
-  const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null)
+  const [profilePhotos] = useDatabaseCollection<Record<string, string>>('profilePhotos', emptyProfilePhotos)
   const [accountSettings] = useDatabaseCollection<Record<string, { name?: string }>>('accountSettings', {})
   const workspaceToastTimer = useRef<number | null>(null)
   const [timedOutAt, setTimedOutAt] = useState<number | null>(null)
@@ -84,23 +85,13 @@ function WorkspaceApp() {
       const currentSession = await getCurrentSession()
       if (!active) return
       setSession(currentSession)
-      if (!currentSession) { setProfilePhotoUrl(null); return }
-      try {
-        const photoUrl = await getOwnProfilePhoto(currentSession)
-        if (active) setProfilePhotoUrl(photoUrl)
-      } catch {
-        if (active) setProfilePhotoUrl(null)
-      }
     }
     const onAuthChange = () => { void loadAccount() }
-    const onPhotoChange = (event: Event) => setProfilePhotoUrl((event as CustomEvent<string | null>).detail ?? null)
     void loadAccount()
     window.addEventListener(authChangeEvent, onAuthChange)
-    window.addEventListener(profilePhotoChangedEvent, onPhotoChange)
     return () => {
       active = false
       window.removeEventListener(authChangeEvent, onAuthChange)
-      window.removeEventListener(profilePhotoChangedEvent, onPhotoChange)
     }
   }, [])
   useEffect(() => {
@@ -216,7 +207,7 @@ function WorkspaceApp() {
   return <div className="app-shell">
     <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} active={activePage} onNavigate={onNavigate} onLogout={() => setShowLogoutConfirm(true)} />
     <main className="main-area">
-      <Topbar onAdd={onAdd} onToggle={() => setCollapsed(!collapsed)} collapsed={collapsed} searchItems={searchItems} onSearchSelect={onSearchSelect} onNavigate={onNavigate} onTimeout={() => { setTimedOutAt(Date.now()); setIsTimedOut(true) }} onLogout={() => setShowLogoutConfirm(true)} accountName={accountSettings[session?.user.id ?? '']?.name?.trim() || String((session?.user.user_metadata as { full_name?: unknown; name?: unknown } | undefined)?.full_name ?? (session?.user.user_metadata as { name?: unknown } | undefined)?.name ?? session?.user.email?.split('@')[0] ?? 'Workspace member')} accountEmail={session?.user.email ?? ''} profilePhotoUrl={profilePhotoUrl} showAdd={activePage !== 'Tasks / Deals'} />
+      <Topbar onAdd={onAdd} onToggle={() => setCollapsed(!collapsed)} collapsed={collapsed} searchItems={searchItems} onSearchSelect={onSearchSelect} onNavigate={onNavigate} onTimeout={() => { setTimedOutAt(Date.now()); setIsTimedOut(true) }} onLogout={() => setShowLogoutConfirm(true)} accountName={accountSettings[session?.user.id ?? '']?.name?.trim() || String((session?.user.user_metadata as { full_name?: unknown; name?: unknown } | undefined)?.full_name ?? (session?.user.user_metadata as { name?: unknown } | undefined)?.name ?? session?.user.email?.split('@')[0] ?? 'Workspace member')} accountEmail={session?.user.email ?? ''} profilePhotoUrl={profilePhotos[session?.user.id ?? ''] ?? null} showAdd={activePage !== 'Tasks / Deals'} />
       {database.status === 'error' && <div className="database-error-banner" role="alert">Supabase connection issue. Changes may not be saved. {database.error}</div>}
       {page}
     </main>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Activity, ArrowRight, Bell, BriefcaseBusiness, CalendarDays, ChevronLeft, ClipboardList, Coffee, FolderKanban, LayoutDashboard, LogOut, Menu, Plus, Search, Settings, ShieldCheck, Users, X, ImagePlus } from 'lucide-react'
 import { useState as useFormState } from 'react'
 import { CustomSelect } from './CustomControls'
+import { prepareProfilePhoto } from '../lib/profilePhoto'
 
 export type GlobalSearchItem = { kind: 'Lead' | 'Client' | 'Project' | 'Task' | 'Page'; title: string; subtitle: string; page: string; key: string }
 export type CreateRecordType = 'Lead' | 'Client' | 'Project' | 'Task'
@@ -133,25 +134,6 @@ export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect
 }
 
 
-async function encodeLeadProfilePhoto(file: File) {
-  const bitmap = await createImageBitmap(file)
-  const scale = Math.min(1, 512 / Math.max(bitmap.width, bitmap.height))
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale))
-  canvas.height = Math.max(1, Math.round(bitmap.height * scale))
-  const context = canvas.getContext('2d')
-  if (!context) { bitmap.close(); throw new Error('Could not prepare this profile photo.') }
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-  bitmap.close()
-  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(result => result ? resolve(result) : reject(new Error('Could not prepare this profile photo.')), 'image/webp', 0.82))
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Could not read this profile photo.'))
-    reader.onerror = () => reject(new Error('Could not read this profile photo.'))
-    reader.readAsDataURL(blob)
-  })
-}
-
 export function AddNewModal({ onClose, initialChoice, clients = [], projects = [], onCreate }: { onClose: () => void; initialChoice?: CreateRecordType | null; clients?: string[]; projects?: string[]; onCreate?: (type: CreateRecordType, values: Record<string, string>) => Promise<void> }) {
   const [choice, setChoice] = useFormState<CreateRecordType>(initialChoice ?? 'Lead')
   const [step, setStep] = useFormState<'choose' | 'form'>(initialChoice ? 'form' : 'choose')
@@ -187,7 +169,7 @@ export function AddNewModal({ onClose, initialChoice, clients = [], projects = [
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setSaveError('Choose a JPG, PNG, or WebP profile photo.'); return }
     if (file.size < 1 || file.size > 5 * 1024 * 1024) { setSaveError('Choose a profile photo up to 5 MB.'); return }
     setLeadPhotoPreparing(true)
-    try { setLeadPhoto(await encodeLeadProfilePhoto(file)) }
+    try { setLeadPhoto(await prepareProfilePhoto(file)) }
     catch (error) { setSaveError(error instanceof Error ? error.message : 'Could not prepare this profile photo.') }
     finally { setLeadPhotoPreparing(false) }
   }

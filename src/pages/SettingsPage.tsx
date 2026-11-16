@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { Bell, Camera, Check, Clock3, Globe2, ImagePlus, LoaderCircle, LockKeyhole, Save, Trash2, UserRound, X } from 'lucide-react'
 import { CustomSelect } from '../components/CustomControls'
 import { showWorkspaceToast } from '../lib/workspaceToast'
-import { announceProfilePhotoChange, getCurrentSession, getOwnProfilePhoto, removeOwnProfilePhoto, uploadOwnProfilePhoto, type SupabaseSession } from '../lib/supabase'
-import { useDatabaseCollection } from '../lib/database'
+import { getCurrentSession, type SupabaseSession } from '../lib/supabase'
+import { updateDatabaseCollection, useDatabaseCollection } from '../lib/database'
+import { emptyProfilePhotos, prepareProfilePhoto } from '../lib/profilePhoto'
 
 type Preferences = { name: string; language: string; timeZone: string; emailUpdates: boolean; taskReminders: boolean; productUpdates: boolean }
 const defaults: Preferences = { name: '', language: 'English', timeZone: 'Asia/Manila (UTC+8)', emailUpdates: true, taskReminders: true, productUpdates: false }
@@ -11,6 +12,7 @@ const defaults: Preferences = { name: '', language: 'English', timeZone: 'Asia/M
 export default function SettingsPage() {
   const [session, setSession] = useState<SupabaseSession | null>(null)
   const [settingsByUser, setSettingsByUser] = useDatabaseCollection<Record<string, Preferences>>('accountSettings', {})
+  const [profilePhotos] = useDatabaseCollection<Record<string, string>>('profilePhotos', emptyProfilePhotos)
   const [saved, setSaved] = useState(false)
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
@@ -23,20 +25,17 @@ export default function SettingsPage() {
     void getCurrentSession().then(async current => {
       if (!active) return
       setSession(current)
-      if (!current) { setPhotoLoading(false); return }
-      try {
-        const url = await getOwnProfilePhoto(current)
-        if (active) setPhotoUrl(url)
-      } catch (error) {
-        if (active) setPhotoError(error instanceof Error ? error.message : 'Profile photo could not be loaded.')
-      } finally {
-        if (active) setPhotoLoading(false)
-      }
+      if (!current) setPhotoLoading(false)
     })
     return () => { active = false }
   }, [])
   useEffect(() => () => { if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl) }, [photoPreviewUrl])
   const userId = session?.user.id ?? ''
+  useEffect(() => {
+    if (!userId) return
+    setPhotoUrl(profilePhotos[userId] ?? null)
+    setPhotoLoading(false)
+  }, [profilePhotos, userId])
   const metadata = session?.user.user_metadata as { full_name?: string; name?: string } | undefined
   const profileName = metadata?.full_name ?? metadata?.name ?? session?.user.email?.split('@')[0] ?? ''
   const settings: Preferences = { ...defaults, name: profileName, ...(userId ? settingsByUser[userId] : {}) }
@@ -74,9 +73,9 @@ export default function SettingsPage() {
     try {
       const current = await getCurrentSession()
       if (!current) throw new Error('Your sign-in session expired. Sign in again.')
-      const nextUrl = await uploadOwnProfilePhoto(current, pendingPhoto)
+      const nextUrl = await prepareProfilePhoto(pendingPhoto)
+      await updateDatabaseCollection<Record<string, string>>('profilePhotos', {}, photos => ({ ...photos, [current.user.id]: nextUrl }))
       setPhotoUrl(nextUrl)
-      announceProfilePhotoChange(nextUrl)
       cancelPhotoPreview()
       showWorkspaceToast('Profile photo updated.')
     } catch (error) {
@@ -89,9 +88,12 @@ export default function SettingsPage() {
     try {
       const current = await getCurrentSession()
       if (!current) throw new Error('Your sign-in session expired. Sign in again.')
-      await removeOwnProfilePhoto(current)
+      await updateDatabaseCollection<Record<string, string>>('profilePhotos', {}, photos => {
+        const next = { ...photos }
+        delete next[current.user.id]
+        return next
+      })
       setPhotoUrl(null)
-      announceProfilePhotoChange(null)
       showWorkspaceToast('Profile photo removed.')
     } catch (error) {
       setPhotoError(error instanceof Error ? error.message : 'Profile photo could not be removed.')
