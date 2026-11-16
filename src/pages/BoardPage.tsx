@@ -3,6 +3,7 @@ import { Activity, ArrowDown, ArrowRight, ArrowUpDown, ArrowUpRight, CalendarDay
 import { CustomSelect } from '../components/CustomControls'
 import { useDatabaseCollection } from '../lib/database'
 import { showWorkspaceToast } from '../lib/workspaceToast'
+import { leadDirectory, type LeadDirectoryRow } from './LeadsPage'
 
 type Ticket = { id: string; project: string; title: string; priority: 'Low' | 'Medium' | 'High' | 'Urgent'; client: string; date: string; owner: string }
 type TicketAttachment = { id: string; ticketId: string; boardKey?: string; name: string; type: string; size: number; dataUrl: string; addedAt: string }
@@ -19,6 +20,16 @@ const initialBoard: TicketColumn[] = [
   { id: 'review', name: 'Review / Proposal', color: 'purple', tickets: [] },
   { id: 'won', name: 'Won', color: 'green', tickets: [] },
 ]
+
+const leadBoardStages = [
+  { id: 'new', name: 'New Leads', color: 'gray', status: 'New Leads' },
+  { id: 'contacted', name: 'Contacted', color: 'blue', status: 'Contacted' },
+  { id: 'discovery', name: 'Discovery', color: 'cyan', status: 'Discovery' },
+  { id: 'proposal', name: 'Proposal sent', color: 'purple', status: 'Proposal sent' },
+  { id: 'awaiting-deposit', name: 'Awaiting deposit', color: 'orange', status: 'Awaiting deposit' },
+  { id: 'won', name: 'Won', color: 'green', status: 'Won' },
+  { id: 'lost', name: 'Lost', color: 'gray', status: 'Lost' },
+] as const
 
 function TicketModal({ stage, columns, projectName, projectClient, projects, onClose, onCreate }: { stage: string; columns: TicketColumn[]; projectName?: string; projectClient?: string; projects: { name: string; client: string }[]; onClose: () => void; onCreate: (ticket: Ticket, stage: string) => void }) {
   const [title, setTitle] = useState('')
@@ -73,6 +84,8 @@ export default function BoardPage({ projectContext = false, projectName, project
   const MAX_ATTACHMENT_STORAGE = 10 * 1024 * 1024
   const boardKey = projectContext ? 'projectBoard' : 'board'
   const [savedProjects] = useDatabaseCollection<{ name: string; client: string }[]>('projects', [])
+  const [savedLeads] = useDatabaseCollection<LeadDirectoryRow[]>('leads', leadDirectory)
+  const [leadStatusOverrides, setLeadStatusOverrides] = useDatabaseCollection<Record<string, string>>('leadStatusOverrides', {})
   const projectChoices = projectContext && projectName ? [{ name: projectName, client: projectClient ?? '' }] : savedProjects
   const [search, setSearch] = useState('')
   const [project, setProject] = useState('All projects')
@@ -110,20 +123,49 @@ export default function BoardPage({ projectContext = false, projectName, project
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [imagePreview])
+  const leadTickets = savedLeads.map(lead => {
+    const status = leadStatusOverrides[lead.name] ?? lead.status
+    const stage = leadBoardStages.find(item => item.status === status) ?? leadBoardStages[0]
+    return {
+      stageId: stage.id,
+      lead,
+      ticket: { id: `lead:${lead.name}`, project: lead.type || 'Lead', title: lead.name, priority: 'Low' as const, client: lead.client, date: lead.date, owner: lead.initials || lead.name.slice(0, 1) },
+    }
+  })
+  const boardColumns: TicketColumn[] = projectContext ? columns : leadBoardStages.map(stage => ({
+    id: stage.id,
+    name: stage.name,
+    color: stage.color,
+    tickets: leadTickets.filter(item => item.stageId === stage.id).map(item => item.ticket),
+  }))
+  const leadByTicketId = new Map(leadTickets.map(item => [item.ticket.id, item.lead]))
   const normalizedProjectClient = projectClient?.trim().toLowerCase() || projectName?.trim().split(/\s+/)[0].toLowerCase()
   const belongsToProject = (ticket: Ticket) => !projectName || ticket.project.toLowerCase() === projectName.toLowerCase() || Boolean(normalizedProjectClient && ticket.client.toLowerCase() === normalizedProjectClient)
-  const total = columns.reduce((count, column) => count + column.tickets.filter(belongsToProject).length, 0)
+  const total = boardColumns.reduce((count, column) => count + column.tickets.filter(belongsToProject).length, 0)
   const addTicket = (ticket: Ticket, stage: string) => {
     setColumns(current => current.map(column => column.id === stage ? { ...column, tickets: [...column.tickets, ticket] } : column))
     setModalStage(null)
     showWorkspaceToast(projectContext ? 'Task added.' : 'Ticket added.')
   }
   const moveTicket = (ticketId: string, destination: string) => {
-    const sourceColumn = columns.find(column => column.tickets.some(ticket => ticket.id === ticketId))
-    const destinationColumn = columns.find(column => column.id === destination)
+    const sourceColumn = boardColumns.find(column => column.tickets.some(ticket => ticket.id === ticketId))
+    const destinationColumn = boardColumns.find(column => column.id === destination)
     if (!sourceColumn || !destinationColumn || sourceColumn.id === destinationColumn.id) {
       setDraggingTicketId(null)
       setDragOverColumnId(null)
+      return
+    }
+    if (!projectContext) {
+      const lead = leadByTicketId.get(ticketId)
+      const nextStatus = leadBoardStages.find(stage => stage.id === destination)?.status
+      if (lead && nextStatus) {
+        setLeadStatusOverrides(current => ({ ...current, [lead.name]: nextStatus }))
+        setDraggingTicketId(null)
+        setDragOverColumnId(null)
+        setRecentlyMovedTicketId(ticketId)
+        window.setTimeout(() => setRecentlyMovedTicketId(current => current === ticketId ? null : current), 420)
+        showWorkspaceToast('Lead moved.')
+      }
       return
     }
     const positions = new Map<string, { left: number; top: number }>()
@@ -244,22 +286,22 @@ export default function BoardPage({ projectContext = false, projectName, project
     ? ticketActivity.filter(item => item.ticketId === activeTicket.ticket.id && (item.boardKey ?? 'board') === boardKey).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     : []
   return <div className="dashboard-content board-content">
-    <div className="board-heading-row"><div><div className="breadcrumb"><span>WORKSPACE</span><b>/</b><span>TASKS &amp; DEALS</span></div><h1>Project board</h1><p>Plan work, track delivery, and keep every project moving.</p></div>
-      <div className="board-heading-actions"><button className="add-button new-ticket-button" onClick={() => setModalStage('new')}><Plus size={14}/>New ticket</button></div>
+    <div className="board-heading-row"><div><div className="breadcrumb"><span>WORKSPACE</span><b>/</b><span>{projectContext ? 'PROJECT TASKS' : 'TASKS & DEALS'}</span></div><h1>{projectContext ? 'Project board' : 'Lead pipeline'}</h1><p>{projectContext ? 'Plan work, track delivery, and keep every project moving.' : 'Move leads through your sales pipeline by dragging them between stages.'}</p></div>
+      {projectContext && <div className="board-heading-actions"><button className="add-button new-ticket-button" onClick={() => setModalStage('new')}><Plus size={14}/>New ticket</button></div>}
     </div>
-    <div className="board-toolbar"><div className="board-tab"><span className="board-tab-icon"><LayoutDashboard size={14}/></span><b>Board</b><i/><span>{total} tickets</span></div>
-      <div className="board-tools"><label className="board-search"><Search size={14}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search tickets"/></label>
-        {projectName ? <span className="project-filter project-filter-static" title={projectName}><Filter size={13}/><span>{projectName}</span></span> : <label className="project-filter"><Filter size={13}/><CustomSelect className="board-filter-select" showChevron={false} ariaLabel="Filter by project" value={project} options={['All projects', ...projectChoices.map(item => item.name)]} onChange={setProject}/><ChevronDown size={13}/></label>}
+    <div className="board-toolbar"><div className="board-tab"><span className="board-tab-icon"><LayoutDashboard size={14}/></span><b>{projectContext ? 'Board' : 'Leads'}</b><i/><span>{total} {projectContext ? 'tickets' : total === 1 ? 'lead' : 'leads'}</span></div>
+      <div className="board-tools"><label className="board-search"><Search size={14}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder={projectContext ? 'Search tickets' : 'Search leads'}/></label>
+        {projectContext && (projectName ? <span className="project-filter project-filter-static" title={projectName}><Filter size={13}/><span>{projectName}</span></span> : <label className="project-filter"><Filter size={13}/><CustomSelect className="board-filter-select" showChevron={false} ariaLabel="Filter by project" value={project} options={['All projects', ...projectChoices.map(item => item.name)]} onChange={setProject}/><ChevronDown size={13}/></label>)}
         <button className={`board-tool-button ${preferences.sortByTitle ? 'tool-selected' : ''}`} aria-pressed={preferences.sortByTitle} onClick={() => setPreferences(current => ({ ...current, sortByTitle: !current.sortByTitle }))}><ArrowUpDown size={13}/>Sort</button>
-        <button className="board-tool-button settings-tool" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={14}/>Settings</button>
+        {projectContext && <button className="board-tool-button settings-tool" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={14}/>Settings</button>}
       </div>
     </div>
-    <div className="kanban-board">{columns.map(column => {
+    <div className={`kanban-board ${projectContext ? '' : 'lead-kanban-board'}`}>{boardColumns.map(column => {
       const projectTickets = column.tickets.filter(belongsToProject)
-      const filtered = projectTickets.filter(ticket => (projectName || project === 'All projects' || ticket.project === project) && `${ticket.id} ${ticket.project} ${ticket.title} ${ticket.client}`.toLowerCase().includes(search.toLowerCase()))
+      const filtered = projectTickets.filter(ticket => (!projectContext || projectName || project === 'All projects' || ticket.project === project) && `${ticket.id} ${ticket.project} ${ticket.title} ${ticket.client} ${leadByTicketId.get(ticket.id)?.email ?? ''}`.toLowerCase().includes(search.toLowerCase()))
       const visibleTickets = preferences.sortByTitle ? [...filtered].sort((a, b) => a.title.localeCompare(b.title)) : filtered
       return <section className={`kanban-column ${dragOverColumnId === column.id ? 'drag-over' : ''}`} key={column.id} onDragEnter={event => { event.preventDefault(); setDragOverColumnId(column.id) }} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverColumnId(column.id) }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOverColumnId(current => current === column.id ? null : current) }} onDrop={event => { event.preventDefault(); const ticketId = event.dataTransfer.getData('text/plain'); if (ticketId) moveTicket(ticketId, column.id); else setDragOverColumnId(null) }}>
-        <div className="kanban-column-head"><span className={`column-dot ${column.color}`}/><strong>{column.name}</strong><b className="column-count">{projectTickets.length}</b><button aria-label={`${column.name} options`} onClick={() => showToast(`${column.name} options are coming soon.`)}><Ellipsis size={16}/></button></div>
+        <div className="kanban-column-head"><span className={`column-dot ${column.color}`}/><strong>{column.name}</strong><b className="column-count">{projectTickets.length}</b>{projectContext && <button aria-label={`${column.name} options`} onClick={() => showToast(`${column.name} options are coming soon.`)}><Ellipsis size={16}/></button>}</div>
         <div className="ticket-stack">{visibleTickets.map(ticket => <article ref={element => { if (element) ticketElements.current.set(ticket.id, element); else ticketElements.current.delete(ticket.id) }} className={`ticket-card ${preferences.compactCards ? 'compact-card' : ''} ${draggingTicketId === ticket.id ? 'drag-source-hidden' : ''} ${recentlyMovedTicketId === ticket.id ? 'moved-card' : ''}`} key={ticket.id} draggable onDragStart={event => {
           setDraggingTicketId(ticket.id)
           setDragOverColumnId(null)
@@ -270,17 +312,17 @@ export default function BoardPage({ projectContext = false, projectName, project
           document.body.appendChild(dragPreview)
           event.dataTransfer.setDragImage(dragPreview, 36, 26)
           window.setTimeout(() => dragPreview.remove(), 0)
-        }} onDragEnd={() => { setDraggingTicketId(null); setDragOverColumnId(null) }} onClick={() => { setTicketTab('Overview'); setCommentDraft(''); setActiveTicket({ ticket, stage: column.id }) }}>
-          <div className="ticket-reference">{preferences.showTicketIds && <><span>{ticket.id}</span><i>·</i></>}{ticket.project}</div><h3>{ticket.title}</h3>
+        }} onDragEnd={() => { setDraggingTicketId(null); setDragOverColumnId(null) }} onClick={projectContext ? () => { setTicketTab('Overview'); setCommentDraft(''); setActiveTicket({ ticket, stage: column.id }) } : undefined} aria-label={!projectContext ? `Drag ${ticket.title} to change lead stage` : undefined}>
+          {!projectContext && leadByTicketId.has(ticket.id) ? <><div className="ticket-reference">{leadByTicketId.get(ticket.id)?.type || 'Lead'}</div><h3>{ticket.title}</h3><div className="lead-card-contact">{ticket.client} · {leadByTicketId.get(ticket.id)?.email}</div><div className="ticket-footer"><span>{leadByTicketId.get(ticket.id)?.source}</span><b>{leadByTicketId.get(ticket.id)?.budget}</b></div></> : <><div className="ticket-reference">{preferences.showTicketIds && <><span>{ticket.id}</span><i>·</i></>}{ticket.project}</div><h3>{ticket.title}</h3>
           <div className="ticket-tags"><span className={`priority ${ticket.priority.toLowerCase()}`}>{ticket.priority}</span><span className="client-tag"><i/>{ticket.client}</span></div>
-          <div className="ticket-footer"><span>{ticket.date}</span><b className={`assignee assignee-${ticket.owner.toLowerCase()}`}>{ticket.owner}</b></div>
+          <div className="ticket-footer"><span>{ticket.date}</span><b className={`assignee assignee-${ticket.owner.toLowerCase()}`}>{ticket.owner}</b></div></>}
         </article>)}</div>
-        {column.id !== 'won' && <button className="add-ticket-inline" onClick={() => setModalStage(column.id)}><Plus size={13}/>Add ticket</button>}
+        {projectContext && column.id !== 'won' && <button className="add-ticket-inline" onClick={() => setModalStage(column.id)}><Plus size={13}/>Add ticket</button>}
       </section>
     })}</div>
     {toast && <div className="board-toast"><span>{toast}</span><button aria-label="Dismiss" onClick={() => setToast('')}><X size={13}/></button></div>}
     {settingsOpen && <BoardSettingsModal preferences={preferences} onClose={() => setSettingsOpen(false)} onSave={next => { setPreferences(next); setSettingsOpen(false); showWorkspaceToast('Board settings saved.') }}/>}
-    {modalStage && <TicketModal stage={modalStage} columns={columns} projectName={projectName} projectClient={projectClient} projects={projectChoices} onClose={() => setModalStage(null)} onCreate={addTicket} />}
+    {projectContext && modalStage && <TicketModal stage={modalStage} columns={columns} projectName={projectName} projectClient={projectClient} projects={projectChoices} onClose={() => setModalStage(null)} onCreate={addTicket} />}
     {activeTicket && <div className="detail-backdrop" onClick={() => setActiveTicket(null)}><aside className="ticket-detail ticket-drawer-like" role="dialog" aria-modal="true" aria-label={`${activeTicket.ticket.title} ticket details`} onClick={event => event.stopPropagation()}>
       <header className="client-drawer-header ticket-drawer-header"><div className="client-drawer-title"><h2>{activeTicket.ticket.title}</h2><span>{activeTicket.ticket.id} · {activeTicket.ticket.project}</span></div><span className="ticket-drawer-stage">{columns.find(column => column.id === activeTicket.stage)?.name}</span><button className="client-drawer-close" onClick={() => setActiveTicket(null)} aria-label="Close ticket details"><X size={16}/></button></header>
       <nav className="client-drawer-tabs ticket-drawer-tabs" role="tablist" aria-label="Ticket details tabs">{(['Overview', 'Activity', 'Comments', 'Attachments'] as const).map(tab => <button key={tab} role="tab" aria-selected={ticketTab === tab} className={ticketTab === tab ? 'selected' : ''} onClick={() => setTicketTab(tab)}>{tab}{tab === 'Comments' && <span className="ticket-attachment-count">{ticketComments.filter(comment => comment.ticketId === activeTicket.ticket.id && (comment.boardKey ?? 'board') === boardKey).length}</span>}{tab === 'Attachments' && <span className="ticket-attachment-count">{ticketAttachments.filter(attachment => attachment.ticketId === activeTicket.ticket.id && (attachment.boardKey ?? 'board') === boardKey).length}</span>}</button>)}</nav>

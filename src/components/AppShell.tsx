@@ -49,7 +49,7 @@ export function Sidebar({ collapsed, onToggle, active, onNavigate, onLogout }: {
   </aside>
 }
 
-export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect, onNavigate, onTimeout, onLogout, accountName, accountEmail, profilePhotoUrl }: { onAdd: (type?: CreateRecordType) => void; onToggle: () => void; collapsed: boolean; searchItems: GlobalSearchItem[]; onSearchSelect: (item: GlobalSearchItem) => void; onNavigate: (page: string) => void; onTimeout: () => void; onLogout: () => void; accountName: string; accountEmail: string; profilePhotoUrl: string | null }) {
+export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect, onNavigate, onTimeout, onLogout, accountName, accountEmail, profilePhotoUrl, showAdd = true }: { onAdd: (type?: CreateRecordType) => void; onToggle: () => void; collapsed: boolean; searchItems: GlobalSearchItem[]; onSearchSelect: (item: GlobalSearchItem) => void; onNavigate: (page: string) => void; onTimeout: () => void; onLogout: () => void; accountName: string; accountEmail: string; profilePhotoUrl: string | null; showAdd?: boolean }) {
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState(false)
   const [open, setOpen] = useState(false)
@@ -116,7 +116,7 @@ export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect
       </div>}
     </form>
     <div className="top-actions">
-      <button className="add-button" onClick={() => onAdd()}><Plus size={14} /> <span>Add New</span></button>
+      {showAdd && <button className="add-button" onClick={() => onAdd()}><Plus size={14} /> <span>Add New</span></button>}
       <button className={`icon-button notification ${notice ? 'noticed' : ''}`} onClick={() => setNotice(!notice)} aria-label="Notifications"><Bell size={16} /><i /></button>
       <div className="account-menu-anchor" ref={accountMenuRef}>
         <button className={`avatar account-avatar ${showPhoto ? 'has-photo' : ''} ${accountOpen ? 'open' : ''}`} title={`Account menu for ${accountName}`} aria-label={`Open account menu for ${accountName}`} aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen(value => !value)}>{showPhoto ? <img src={profilePhotoUrl ?? ''} alt="" onError={() => setPhotoFailed(true)}/> : <span>{accountInitial}</span>}</button>

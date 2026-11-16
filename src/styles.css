@@ -689,6 +689,13 @@
 .ticket-card.compact-card .ticket-footer{padding-top:5px}
 @media(max-width:460px){.board-settings-modal{padding:18px}.board-settings-footer{align-items:stretch;flex-direction:column-reverse}.board-settings-footer>div{justify-content:flex-end}.board-settings-footer>button{align-self:flex-start}}
 @media(prefers-reduced-motion:reduce){.board-setting-row i,.board-setting-row i::after{transition:none}}
+.lead-kanban-board{grid-template-columns:repeat(7,minmax(185px,1fr));overflow-x:auto}
+.lead-kanban-board .kanban-column{min-width:185px}
+.column-dot.cyan{background:#16a3b5}
+.lead-card-contact{color:#718197;font-size:9px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lead-kanban-board .ticket-card{cursor:grab}
+.lead-kanban-board .ticket-card:active{cursor:grabbing}
+@media(max-width:700px){.lead-kanban-board{grid-template-columns:repeat(7,minmax(210px,75vw))}}
 .client-record-page .task-detail-heading{align-items:center;margin-bottom:18px}
 .client-record-heading-main{display:flex;align-items:center;gap:14px}
 .client-record-avatar{width:52px;height:52px;display:grid;place-items:center;flex:none;border:1px solid #f3d9cc;border-radius:15px;background:#fff2eb;color:#e75c28;font-size:16px;font-weight:700}
