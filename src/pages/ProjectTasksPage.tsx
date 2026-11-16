@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, ClipboardList, FolderKanban, Search } from 'lucide-react'
+import { CircleCheck, Clock3, ChevronDown, ChevronLeft, ChevronRight, FolderKanban, ListChecks, LoaderCircle, Search } from 'lucide-react'
 import { DirectoryHeader, DirectoryStat, DirectoryTabs } from '../components/DirectoryShared'
 import { CustomSelect } from '../components/CustomControls'
 import { useDatabaseCollection } from '../lib/database'
@@ -20,7 +20,7 @@ export default function ProjectTasksPage({ onOpenProject, initialProjectName }: 
   return <div className="directory-page">
     <DirectoryHeader section="DELIVERY WORKSPACE" title="Project tasks" description="Coordinate task ownership and deadlines across every project."/>
     <div className="directory-stat-grid">
-      <DirectoryStat icon={ClipboardList} label="Total tasks" value={String(tasks.length)} detail="Across all projects" tone="orange"/><DirectoryStat icon={Circle} label="To do" value={String(tasks.filter(task => task.status === 'To do').length)} detail="Ready to start" tone="blue"/><DirectoryStat icon={Activity} label="In progress" value={String(tasks.filter(task => task.status === 'In progress').length)} detail="Currently underway" tone="purple"/><DirectoryStat icon={Check} label="Completed" value={String(tasks.filter(task => task.status === 'Completed').length)} detail="Finished tasks" tone="green"/>
+      <DirectoryStat icon={ListChecks} label="Total tasks" value={String(tasks.length)} detail="Across all projects" tone="orange"/><DirectoryStat icon={Clock3} label="To do" value={String(tasks.filter(task => task.status === 'To do').length)} detail="Ready to start" tone="blue"/><DirectoryStat icon={LoaderCircle} label="In progress" value={String(tasks.filter(task => task.status === 'In progress').length)} detail="Currently underway" tone="purple"/><DirectoryStat icon={CircleCheck} label="Completed" value={String(tasks.filter(task => task.status === 'Completed').length)} detail="Finished tasks" tone="green"/>
     </div>
     <div className="directory-toolbar"><DirectoryTabs tabs={tabs} active={active} onChange={setActive}/><div className="toolbar-controls"><label className="directory-sort project-task-filter"><CustomSelect className="directory-sort-select" showChevron={false} ariaLabel="Filter by project" value={projectOptions.includes(project) ? project : 'All projects'} options={projectOptions} onChange={setProject}/><ChevronDown size={15}/></label><label className="directory-search compact"><Search size={17}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search tasks..."/></label></div></div>
     <section className="directory-panel"><div className="directory-panel-head"><div><h2>Task tracker</h2><span>{visible.length} {visible.length === 1 ? 'task' : 'tasks'}</span></div><label className="directory-sort task-sort"><span>Sort by</span><CustomSelect className="directory-sort-select" showChevron={false} ariaLabel="Sort tasks" value={sort} options={['Due date', 'Task name']} onChange={setSort}/><ChevronDown size={15}/></label></div>
