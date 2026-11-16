@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Check, CircleAlert, LoaderCircle, MailPlus, ShieldCheck, UserPlus, Users, X } from 'lucide-react'
 import { DirectoryHeader } from '../components/DirectoryShared'
-import { getCurrentDatabaseWorkspaceId } from '../lib/database'
+import { getCurrentDatabaseWorkspaceId, useDatabaseCollection } from '../lib/database'
 import { getCurrentSession, getWorkspaceMembership } from '../lib/supabase'
 
 type WorkspaceRole = 'owner' | 'admin' | 'member'
@@ -25,6 +25,7 @@ function displayDate(value: string) {
 }
 
 export default function AccessPage() {
+  const [accountSettings] = useDatabaseCollection<Record<string, { name?: string }>>('accountSettings', {})
   const [members, setMembers] = useState<WorkspaceMember[]>([])
   const [loading, setLoading] = useState(true)
   const [canManage, setCanManage] = useState(false)
@@ -54,7 +55,7 @@ export default function AccessPage() {
       const metadata = session.user.user_metadata as { full_name?: unknown; name?: unknown } | undefined
       const ownMember: WorkspaceMember = {
         email: membership.email || session.user.email || '',
-        displayName: String(metadata?.full_name ?? metadata?.name ?? membership.display_name ?? session.user.email?.split('@')[0] ?? 'Workspace member'),
+        displayName: accountSettings[session.user.id]?.name?.trim() || String(metadata?.full_name ?? metadata?.name ?? membership.display_name ?? session.user.email?.split('@')[0] ?? 'Workspace member'),
         role: membership.role as WorkspaceRole,
         status: 'active',
         createdAt: membership.created_at,
@@ -77,7 +78,7 @@ export default function AccessPage() {
     } catch (cause) {
       setPageError(cause instanceof Error ? cause.message : 'Workspace members could not be loaded.')
     } finally { setLoading(false) }
-  }, [])
+  }, [accountSettings])
 
   useEffect(() => { void loadMembers() }, [loadMembers])
 
