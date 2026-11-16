@@ -5,10 +5,14 @@ import { CustomSelect } from '../components/CustomControls'
 import { useDatabaseCollection } from '../lib/database'
 import { showWorkspaceToast } from '../lib/workspaceToast'
 
-export type LeadDirectoryRow = { name: string; client: string; initials: string; email: string; phone: string; source: string; type: string; budget: string; status: string; date: string; tone: string; location?: string; notes?: string; timeline?: string; followUpDate?: string }
+export type LeadDirectoryRow = { name: string; client: string; initials: string; email: string; phone: string; source: string; type: string; budget: string; status: string; date: string; tone: string; avatarUrl?: string; location?: string; notes?: string; timeline?: string; followUpDate?: string }
 type LeadDrawerTab = 'Overview' | 'Activity' | 'Notes'
 
 export const leadDirectory: LeadDirectoryRow[] = []
+
+export function LeadAvatar({ lead, className = 'directory-avatar' }: { lead: Pick<LeadDirectoryRow, 'initials' | 'tone' | 'avatarUrl'>; className?: string }) {
+  return <span className={`${className} ${lead.tone} ${lead.avatarUrl ? 'has-photo' : ''}`} aria-hidden="true">{lead.avatarUrl ? <img src={lead.avatarUrl} alt=""/> : lead.initials}</span>
+}
 
 
 export default function LeadsPage({ onAdd, onFullWorkflow, statusOverrides = {} }: { onAdd: () => void; onFullWorkflow: (lead: LeadDirectoryRow) => void; statusOverrides?: Record<string, string> }) {
@@ -85,7 +89,7 @@ export default function LeadsPage({ onAdd, onFullWorkflow, statusOverrides = {} 
     <DirectoryTabs tabs={tabs} active={active} onChange={setActive}/>
     <section className="directory-panel"><div className="directory-panel-head"><div><h2>{active === 'all' ? 'All Leads' : active}</h2><span>{visible.length} {visible.length === 1 ? 'lead' : 'leads'}</span></div><form className="directory-search" onSubmit={event => event.preventDefault()}><Search size={17}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search leads..."/><button>Search</button></form></div>
       <div className="directory-table-wrap"><table className="directory-table leads-table"><thead><tr><th>Name</th><th>Contact</th><th>Source</th><th>Project Type</th><th>Budget</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead><tbody>
-        {visible.map(row => <tr key={row.name}><td><div className="person-cell"><span className={`directory-avatar ${row.tone}`}>{row.initials}</span><div><b>{row.name}</b><small>{row.client}</small><em>Other inquiry for this client</em></div></div></td><td><ContactDetails email={row.email} phone={row.phone}/></td><td>{row.source}</td><td><span className="type-chip">{row.type}</span></td><td>{row.budget}</td><td><span className={`record-status ${row.status.toLowerCase().replace(/ /g, '-')}`}>{row.status}</span></td><td>{row.date}</td><td><RecordActionButtons name={row.name} onAction={mode => mode === 'view' ? setSelectedLead(row) : openAction(row, mode)}/></td></tr>)}
+        {visible.map(row => <tr key={row.name}><td><div className="person-cell"><LeadAvatar lead={row}/><div><b>{row.name}</b><small>{row.client}</small><em>Other inquiry for this client</em></div></div></td><td><ContactDetails email={row.email} phone={row.phone}/></td><td>{row.source}</td><td><span className="type-chip">{row.type}</span></td><td>{row.budget}</td><td><span className={`record-status ${row.status.toLowerCase().replace(/ /g, '-')}`}>{row.status}</span></td><td>{row.date}</td><td><RecordActionButtons name={row.name} onAction={mode => mode === 'view' ? setSelectedLead(row) : openAction(row, mode)}/></td></tr>)}
       </tbody></table>{visible.length === 0 && <div className="directory-empty">No leads match your search.</div>}</div>
       <div className="directory-panel-foot"><span>1–{visible.length} of {visible.length} leads</span><span className="pagination"><button disabled><ChevronLeft size={16}/></button>Page 1 of 1<button disabled><ChevronRight size={16}/></button></span><label>Rows <CustomSelect className="rows-select" value="10" options={['10', '25']}/></label></div>
     </section>
@@ -118,7 +122,7 @@ function LeadDetailDrawer({ lead, onClose, onFullWorkflow, onEdit }: { lead: Lea
   }
   const tabs: LeadDrawerTab[] = ['Overview', 'Activity', 'Notes']
   return <div className="client-drawer-backdrop lead-drawer-backdrop" onClick={onClose}><aside className="client-detail-drawer lead-detail-drawer" role="dialog" aria-modal="true" aria-label={`${lead.name} lead details`} onClick={event => event.stopPropagation()}>
-    <header className="client-drawer-header"><span className={`directory-avatar ${lead.tone}`}>{lead.initials}</span><div className="client-drawer-title"><h2>{lead.name}</h2><span>{lead.client} · {lead.status}</span></div><button className="client-drawer-close" aria-label="Close lead details" onClick={onClose}><X size={17}/></button></header>
+    <header className="client-drawer-header"><LeadAvatar lead={lead}/><div className="client-drawer-title"><h2>{lead.name}</h2><span>{lead.client} · {lead.status}</span></div><button className="client-drawer-close" aria-label="Close lead details" onClick={onClose}><X size={17}/></button></header>
     <nav className="client-drawer-tabs lead-drawer-tabs" aria-label="Lead details tabs" role="tablist">{tabs.map(item => <button key={item} role="tab" aria-selected={tab === item} className={tab === item ? 'selected' : ''} onClick={() => setTab(item)}>{item}</button>)}<button className="lead-full-workflow" onClick={() => onFullWorkflow(lead)}>Full workflow <ArrowRight size={12}/></button></nav>
     <div className="client-drawer-content">
       {tab === 'Overview' && <>

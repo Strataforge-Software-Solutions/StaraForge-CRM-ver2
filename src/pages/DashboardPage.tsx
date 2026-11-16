@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Activity, ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown, ClipboardList, Layers3, Users } from 'lucide-react'
 import { useDatabaseCollection } from '../lib/database'
-import { leadDirectory, type LeadDirectoryRow } from './LeadsPage'
+import { LeadAvatar, leadDirectory, type LeadDirectoryRow } from './LeadsPage'
 import { projectDirectory, type ProjectDirectoryRow } from './ProjectsPage'
 import { projectTaskRows, type ProjectTaskRecord } from './ProjectTasksPage'
 
@@ -188,7 +188,7 @@ function LeadsCard({ leads, onOpenLead }: { leads: LeadDirectoryRow[]; onOpenLea
   return <section className="card leads-card">
     <CardTitle icon={Users} title="Recent leads" action={<button className="text-link">View all <ArrowRight size={13}/></button>} />
     <div className="lead-table-wrap"><table><thead><tr><th>Name</th><th>Project type</th><th>Source</th><th>Date</th><th>Status</th></tr></thead>
-      <tbody>{leads.map(lead => <tr key={lead.name}><td><span className={`lead-avatar ${lead.tone}`}>{lead.initials}</span><button type="button" className="dashboard-lead-link" onClick={() => onOpenLead(lead)} aria-label={`Open ${lead.name} lead`}>{lead.name}</button></td><td>{lead.type}</td><td>{lead.source}</td><td>{lead.date}</td><td><span className={`status ${lead.status === 'Won' ? 'won' : ''}`}>{lead.status}</span></td></tr>)}</tbody>
+      <tbody>{leads.map(lead => <tr key={lead.name}><td><LeadAvatar lead={lead} className="lead-avatar"/><button type="button" className="dashboard-lead-link" onClick={() => onOpenLead(lead)} aria-label={`Open ${lead.name} lead`}>{lead.name}</button></td><td>{lead.type}</td><td>{lead.source}</td><td>{lead.date}</td><td><span className={`status ${lead.status === 'Won' ? 'won' : ''}`}>{lead.status}</span></td></tr>)}</tbody>
     </table></div>
   </section>
 }

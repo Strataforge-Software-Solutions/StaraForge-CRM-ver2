@@ -28,9 +28,10 @@ Copy `.env.example` to `.env.local` and fill in values from Supabase Project Set
 ```dotenv
 VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
+SUPABASE_SECRET_KEY=YOUR_SERVER_ONLY_SUPABASE_SECRET_KEY
 ```
 
-Run `npm install` and `npm run dev`. The Vite app runs at `http://127.0.0.1:55010`. `.env.local` is ignored by Git.
+The server-only key is needed for local team invites and profile photo uploads. Never add a `VITE_` prefix to it. Run `npm install` and `npm run dev`; restart the dev server after changing environment values. The Vite app runs at `http://127.0.0.1:55010`. `.env.local` is ignored by Git.
 
 ## 3. Deploy on Vercel
 

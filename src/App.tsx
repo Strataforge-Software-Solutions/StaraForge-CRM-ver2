@@ -139,7 +139,7 @@ function WorkspaceApp() {
     if (type === 'Lead') {
       const name = values.contact?.trim() || values.company?.trim() || 'New lead'
       const budget = values.budgetFrom ? `${values.currency || 'PHP'} ${Number(values.budgetFrom).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Not discussed'
-      const row = { name, client: values.company?.trim() || name, initials: initials(name), email: values.email ?? '', phone: values.phone ?? '', source: values.source || 'Unspecified', type: values.projectType || 'Website', budget, status: 'New Leads', date, tone: 'orange', location: values.location ?? '', notes: values.notes ?? '', timeline: values.timeline ?? '', followUpDate: values.followUpDate ?? '' }
+      const row = { name, client: values.company?.trim() || name, initials: initials(name), ...(values.avatarUrl ? { avatarUrl: values.avatarUrl } : {}), email: values.email ?? '', phone: values.phone ?? '', source: values.source || 'Unspecified', type: values.projectType || 'Website', budget, status: 'New Leads', date, tone: 'orange', location: values.location ?? '', notes: values.notes ?? '', timeline: values.timeline ?? '', followUpDate: values.followUpDate ?? '' }
       await updateDatabaseCollection('leads', leadDirectory, rows => [...rows.filter(item => item.name !== row.name), row])
     } else if (type === 'Client') {
       const name = values.name?.trim() || 'New client'

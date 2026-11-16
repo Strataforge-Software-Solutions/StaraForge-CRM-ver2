@@ -3,7 +3,7 @@ import { Activity, ArrowDown, ArrowRight, ArrowUpDown, ArrowUpRight, CalendarDay
 import { CustomSelect } from '../components/CustomControls'
 import { useDatabaseCollection } from '../lib/database'
 import { showWorkspaceToast } from '../lib/workspaceToast'
-import { leadDirectory, type LeadDirectoryRow } from './LeadsPage'
+import { LeadAvatar, leadDirectory, type LeadDirectoryRow } from './LeadsPage'
 
 type Ticket = { id: string; project: string; title: string; priority: 'Low' | 'Medium' | 'High' | 'Urgent'; client: string; date: string; owner: string }
 type TicketAttachment = { id: string; ticketId: string; boardKey?: string; name: string; type: string; size: number; dataUrl: string; addedAt: string }
@@ -313,7 +313,7 @@ export default function BoardPage({ projectContext = false, projectName, project
           event.dataTransfer.setDragImage(dragPreview, 36, 26)
           window.setTimeout(() => dragPreview.remove(), 0)
         }} onDragEnd={() => { setDraggingTicketId(null); setDragOverColumnId(null) }} onClick={projectContext ? () => { setTicketTab('Overview'); setCommentDraft(''); setActiveTicket({ ticket, stage: column.id }) } : undefined} aria-label={!projectContext ? `Drag ${ticket.title} to change lead stage` : undefined}>
-          {!projectContext && leadByTicketId.has(ticket.id) ? <><div className="ticket-reference">{leadByTicketId.get(ticket.id)?.type || 'Lead'}</div><h3>{ticket.title}</h3><div className="lead-card-contact">{ticket.client} · {leadByTicketId.get(ticket.id)?.email}</div><div className="ticket-footer"><span>{leadByTicketId.get(ticket.id)?.source}</span><b>{leadByTicketId.get(ticket.id)?.budget}</b></div></> : <><div className="ticket-reference">{preferences.showTicketIds && <><span>{ticket.id}</span><i>·</i></>}{ticket.project}</div><h3>{ticket.title}</h3>
+          {!projectContext && leadByTicketId.has(ticket.id) ? <><div className="ticket-reference">{leadByTicketId.get(ticket.id)?.type || 'Lead'}</div><div className="lead-board-card-title"><LeadAvatar lead={leadByTicketId.get(ticket.id)!} className="lead-avatar"/><h3>{ticket.title}</h3></div><div className="lead-card-contact">{ticket.client} · {leadByTicketId.get(ticket.id)?.email}</div><div className="ticket-footer"><span>{leadByTicketId.get(ticket.id)?.source}</span><b>{leadByTicketId.get(ticket.id)?.budget}</b></div></> : <><div className="ticket-reference">{preferences.showTicketIds && <><span>{ticket.id}</span><i>·</i></>}{ticket.project}</div><h3>{ticket.title}</h3>
           <div className="ticket-tags"><span className={`priority ${ticket.priority.toLowerCase()}`}>{ticket.priority}</span><span className="client-tag"><i/>{ticket.client}</span></div>
           <div className="ticket-footer"><span>{ticket.date}</span><b className={`assignee assignee-${ticket.owner.toLowerCase()}`}>{ticket.owner}</b></div></>}
         </article>)}</div>
