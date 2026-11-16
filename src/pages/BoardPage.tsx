@@ -286,7 +286,7 @@ export default function BoardPage({ projectContext = false, projectName, project
     ? ticketActivity.filter(item => item.ticketId === activeTicket.ticket.id && (item.boardKey ?? 'board') === boardKey).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     : []
   return <div className="dashboard-content board-content">
-    <div className="board-heading-row"><div><div className="breadcrumb"><span>WORKSPACE</span><b>/</b><span>{projectContext ? 'PROJECT TASKS' : 'TASKS & DEALS'}</span></div><h1>{projectContext ? 'Project board' : 'Lead pipeline'}</h1><p>{projectContext ? 'Plan work, track delivery, and keep every project moving.' : 'Move leads through your sales pipeline by dragging them between stages.'}</p></div>
+    <div className="board-heading-row"><div><div className="breadcrumb"><span>WORKSPACE</span><b>/</b><span>{projectContext ? 'PROJECT TASKS' : 'LEAD PIPELINE'}</span></div><h1>{projectContext ? 'Project board' : 'Lead Pipeline'}</h1><p>{projectContext ? 'Plan work, track delivery, and keep every project moving.' : 'Move leads through your sales pipeline by dragging them between stages.'}</p></div>
       {projectContext && <div className="board-heading-actions"><button className="add-button new-ticket-button" onClick={() => setModalStage('new')}><Plus size={14}/>New ticket</button></div>}
     </div>
     <div className="board-toolbar"><div className="board-tab"><span className="board-tab-icon"><LayoutDashboard size={14}/></span><b>{projectContext ? 'Board' : 'Leads'}</b><i/><span>{total} {projectContext ? 'tickets' : total === 1 ? 'lead' : 'leads'}</span></div>

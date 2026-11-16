@@ -8,7 +8,7 @@ export type CreateRecordType = 'Lead' | 'Client' | 'Project' | 'Task'
 
 const navigation = [
   { title: 'WORKSPACE', items: [
-    { label: 'Dashboard', icon: LayoutDashboard }, { label: 'Tasks / Deals', icon: ClipboardList },
+    { label: 'Dashboard', icon: LayoutDashboard }, { label: 'Lead Pipeline', page: 'Tasks / Deals', icon: ClipboardList },
     { label: 'Project tasks', icon: BriefcaseBusiness }, { label: 'Leads', icon: Users, badge: undefined },
     { label: 'Clients', icon: Users }, { label: 'Projects', icon: FolderKanban },
     { label: 'Calendar', icon: CalendarDays }, { label: 'Reports', icon: Activity },
@@ -36,9 +36,9 @@ export function Sidebar({ collapsed, onToggle, active, onNavigate, onLogout }: {
     <div className="nav-groups">
       {navigation.map((group) => <section className="nav-group" key={group.title}>
         <div className="nav-label">{group.title}</div>
-        {group.items.map(({ label, icon: Icon, badge }) => <button
-          className={`nav-item ${active === label ? 'active' : ''}`} key={label}
-          onClick={() => onNavigate(label)} onMouseEnter={event => showNavTooltip(event.currentTarget, label)} onMouseLeave={() => setHoveredNav(null)} onFocus={event => showNavTooltip(event.currentTarget, label)} onBlur={() => setHoveredNav(null)} aria-label={label}>
+        {group.items.map(({ label, page, icon: Icon, badge }) => <button
+          className={`nav-item ${active === (page ?? label) ? 'active' : ''}`} key={label}
+          onClick={() => onNavigate(page ?? label)} onMouseEnter={event => showNavTooltip(event.currentTarget, label)} onMouseLeave={() => setHoveredNav(null)} onFocus={event => showNavTooltip(event.currentTarget, label)} onBlur={() => setHoveredNav(null)} aria-label={label}>
           <Icon size={14} strokeWidth={1.8} /><span>{label}</span>{badge && <b className="nav-badge">{badge}</b>}
         </button>)}
       </section>)}

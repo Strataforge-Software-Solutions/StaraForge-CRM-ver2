@@ -163,7 +163,7 @@ function WorkspaceApp() {
     ...[...projectDirectory.filter(project => !additionalProjects.some(extra => extra.name === project.name)), ...additionalProjects].map(row => ({ kind: 'Project' as const, title: row.name, subtitle: `${row.client} · ${row.status}`, page: 'Projects', key: row.name })),
     ...savedTasks.map(row => ({ kind: 'Task' as const, title: row.title, subtitle: `${row.project} · ${row.due}`, page: 'Project tasks', key: row.title })),
     ...[
-      ['Dashboard', 'Workspace overview'], ['Tasks / Deals', 'Project board'], ['Project tasks', 'Task tracker'], ['Leads', 'Sales workspace'], ['Clients', 'Relationships'], ['Projects', 'Delivery workspace'], ['Calendar', 'Meetings, tasks, and milestones'], ['Reports', 'Workspace reports'], ['Access', 'Team access'], ['Audit history', 'Workspace activity log'], ['Settings', 'Account settings'], ['Security', 'Security settings'],
+      ['Dashboard', 'Workspace overview'], ['Tasks / Deals', 'Lead Pipeline'], ['Project tasks', 'Task tracker'], ['Leads', 'Sales workspace'], ['Clients', 'Relationships'], ['Projects', 'Delivery workspace'], ['Calendar', 'Meetings, tasks, and milestones'], ['Reports', 'Workspace reports'], ['Access', 'Team access'], ['Audit history', 'Workspace activity log'], ['Settings', 'Account settings'], ['Security', 'Security settings'],
     ].map(([title, subtitle]) => ({ kind: 'Page' as const, title, subtitle, page: title, key: title })),
   ]
   const onSearchSelect = (item: GlobalSearchItem) => {
