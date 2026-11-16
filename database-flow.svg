@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120" role="img" aria-labelledby="title desc">
+  <title id="title">StrataForge CRM database flow</title>
+  <desc id="desc">Current frontend-only prototype compared to a proposed API-backed PostgreSQL flow and its main CRM entity relationships.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8fafc"/><stop offset="1" stop-color="#eef3f8"/></linearGradient>
+    <linearGradient id="navy" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#172231"/><stop offset="1" stop-color="#25354a"/></linearGradient>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="#477fca"/></marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="#eb672e"/></marker>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#223247" flood-opacity=".08"/></filter>
+    <style>
+      text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#1b293b}.muted{fill:#687b91}.tiny{font-size:13px}.small{font-size:15px}.body{font-size:17px}.label{font-size:13px;font-weight:700;letter-spacing:1.2px}.card{fill:#fff;stroke:#dce4ec;stroke-width:1.5}.line{fill:none;stroke:#477fca;stroke-width:3;marker-end:url(#arrowBlue)}.lineOrange{fill:none;stroke:#eb672e;stroke-width:3;marker-end:url(#arrowOrange)}
+    </style>
+  </defs>
+  <rect width="1600" height="1120" fill="url(#bg)"/>
+  <text x="48" y="55" class="label" fill="#e85e28">STRATAFORGE CRM · ARCHITECTURE</text>
+  <text x="48" y="103" font-size="36" font-weight="750">How data moves through the system</text>
+  <text x="48" y="135" class="body muted">What exists today, and a practical path to durable shared records.</text>
+
+  <!-- Current implementation -->
+  <rect x="42" y="172" width="390" height="886" rx="18" fill="#fff8f3" stroke="#f3c5ad" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="42" y="172" width="390" height="66" rx="18" fill="#fff0e7"/>
+  <path d="M42 220v18h390v-18" fill="#fff0e7"/>
+  <text x="68" y="211" class="label" fill="#d95621">CURRENT · NO DATABASE</text>
+  <text x="68" y="278" font-size="23" font-weight="700">Browser prototype</text>
+  <text x="68" y="307" class="small muted">All application data currently lives in code</text>
+
+  <rect x="68" y="337" width="338" height="104" rx="12" class="card"/>
+  <text x="90" y="370" class="label" fill="#d95621">1 · SEEDED DATA</text>
+  <text x="90" y="397" class="small">Sample leads, clients, projects, tasks,</text>
+  <text x="90" y="419" class="small">board tickets and events in TypeScript</text>
+  <path d="M237 442v38" class="lineOrange"/>
+
+  <rect x="68" y="487" width="338" height="130" rx="12" class="card"/>
+  <text x="90" y="520" class="label" fill="#d95621">2 · REACT PAGES</text>
+  <text x="90" y="548" class="small">Dashboard · Leads · Clients · Projects</text>
+  <text x="90" y="572" class="small">Project tasks · Board · Calendar · Reports</text>
+  <text x="90" y="598" class="tiny muted">Pages read seed data and derive their views</text>
+  <path d="M237 618v38" class="lineOrange"/>
+
+  <rect x="68" y="663" width="338" height="136" rx="12" class="card"/>
+  <text x="90" y="696" class="label" fill="#d95621">3 · COMPONENT STATE</text>
+  <text x="90" y="724" class="small">Edits and new records use React state</text>
+  <text x="90" y="748" class="small">Some changes are shared through App state</text>
+  <text x="90" y="780" class="tiny muted">Examples: status overrides, added projects</text>
+  <path d="M237 800v38" class="lineOrange"/>
+
+  <rect x="68" y="845" width="338" height="142" rx="12" fill="#fff" stroke="#e9a07b" stroke-width="1.5"/>
+  <text x="90" y="879" class="label" fill="#d95621">REFRESH / REOPEN</text>
+  <text x="90" y="910" class="small">In-memory changes are lost or reset</text>
+  <text x="90" y="935" class="small">to the hard-coded sample records.</text>
+  <text x="90" y="970" class="tiny muted">No API, database, or local storage found</text>
+
+  <!-- Proposed architecture -->
+  <rect x="458" y="172" width="1100" height="886" rx="18" fill="#fff" stroke="#cddbec" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="458" y="172" width="1100" height="66" rx="18" fill="#edf4fc"/>
+  <path d="M458 220v18h1100v-18" fill="#edf4fc"/>
+  <text x="486" y="211" class="label" fill="#366fae">PROPOSED · PERSISTENT, MULTI-USER FLOW</text>
+
+  <!-- horizontal flow -->
+  <rect x="490" y="270" width="205" height="150" rx="14" fill="#f5f8fc" stroke="#d6e1ee" stroke-width="1.5"/>
+  <circle cx="526" cy="307" r="18" fill="#e5efff"/><text x="520" y="313" font-size="17" font-weight="700" fill="#3977c2">UI</text>
+  <text x="516" y="351" font-size="19" font-weight="700">React app</text>
+  <text x="516" y="378" class="tiny muted">Pages + typed client</text>
+  <text x="516" y="399" class="tiny muted">loading / error / cache</text>
+
+  <path d="M697 345h44" class="line"/>
+  <rect x="750" y="270" width="220" height="150" rx="14" fill="#f5f8fc" stroke="#d6e1ee" stroke-width="1.5"/>
+  <circle cx="786" cy="307" r="18" fill="#e5efff"/><text x="780" y="313" font-size="16" font-weight="700" fill="#3977c2">API</text>
+  <text x="776" y="351" font-size="19" font-weight="700">Backend service</text>
+  <text x="776" y="378" class="tiny muted">Validate · authorize · write</text>
+  <text x="776" y="399" class="tiny muted">transactions · audit events</text>
+
+  <path d="M972 345h43" class="line"/>
+  <rect x="1024" y="270" width="214" height="150" rx="14" fill="#f4fbf8" stroke="#cce7db" stroke-width="1.5"/>
+  <circle cx="1060" cy="307" r="18" fill="#ddf5eb"/><text x="1054" y="313" font-size="17" font-weight="700" fill="#168761">ID</text>
+  <text x="1050" y="351" font-size="19" font-weight="700">Identity service</text>
+  <text x="1050" y="378" class="tiny muted">Sign-in · MFA · sessions</text>
+  <text x="1050" y="399" class="tiny muted">member / role claims</text>
+  <path d="M1024 330h-42v-35h-12" fill="none" stroke="#4a9a78" stroke-width="2.5" stroke-dasharray="7 6" marker-end="url(#arrowBlue)"/>
+
+  <path d="M1240 345h43" class="line"/>
+  <rect x="1292" y="270" width="230" height="150" rx="14" fill="#eef8f4" stroke="#b9ddcd" stroke-width="1.5"/>
+  <ellipse cx="1328" cy="300" rx="18" ry="7" fill="#d6f0e4" stroke="#238b65" stroke-width="1.5"/><path d="M1310 300v24c0 4 8 7 18 7s18-3 18-7v-24M1310 312c0 4 8 7 18 7s18-3 18-7" fill="none" stroke="#238b65" stroke-width="1.5"/>
+  <text x="1360" y="307" class="label" fill="#168761">DATABASE</text>
+  <text x="1318" y="365" font-size="20" font-weight="700">PostgreSQL</text>
+  <text x="1318" y="391" class="tiny muted">Durable relational records</text>
+  <text x="1318" y="411" class="tiny muted">workspace_id on tenant data</text>
+
+  <text x="492" y="459" class="label" fill="#366fae">REQUEST / RESPONSE CYCLE</text>
+  <text x="492" y="485" class="small muted">User action → API validates access and data → database transaction commits → updated records return to the UI.</text>
+  <path d="M1407 426v58h-802v-49" fill="none" stroke="#7ea4d1" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrowBlue)"/>
+
+  <!-- Schema map -->
+  <text x="492" y="535" class="label" fill="#366fae">CORE DATA MODEL · PROPOSED TABLES AND LINKS</text>
+  <!-- workspace / users -->
+  <rect x="492" y="561" width="222" height="95" rx="11" fill="#f6f8fb" stroke="#d5dee8"/>
+  <text x="510" y="589" font-size="17" font-weight="700">workspaces</text><text x="510" y="614" class="tiny muted">id · name · settings</text><text x="510" y="638" class="tiny muted">one tenant boundary</text>
+  <rect x="492" y="679" width="222" height="95" rx="11" fill="#f6f8fb" stroke="#d5dee8"/>
+  <text x="510" y="707" font-size="17" font-weight="700">users + memberships</text><text x="510" y="732" class="tiny muted">workspace_id · role · status</text><text x="510" y="756" class="tiny muted">auth provider owns MFA secrets</text>
+  <path d="M603 658v16" stroke="#8095aa" stroke-width="2"/>
+
+  <!-- CRM entities -->
+  <rect x="758" y="561" width="230" height="95" rx="11" fill="#fff7f2" stroke="#f1c7b1"/>
+  <text x="776" y="589" font-size="17" font-weight="700">leads</text><text x="776" y="614" class="tiny muted">workspace_id · stage · source</text><text x="776" y="638" class="tiny muted">contact · budget · follow-up</text>
+  <rect x="1031" y="561" width="230" height="95" rx="11" fill="#f4f8ff" stroke="#cbdcf2"/>
+  <text x="1049" y="589" font-size="17" font-weight="700">clients</text><text x="1049" y="614" class="tiny muted">workspace_id · contact details</text><text x="1049" y="638" class="tiny muted">relationship · linked lead</text>
+  <rect x="1304" y="561" width="218" height="95" rx="11" fill="#f3faf7" stroke="#c9e5d8"/>
+  <text x="1322" y="589" font-size="17" font-weight="700">projects</text><text x="1322" y="614" class="tiny muted">client_id · optional lead_id</text><text x="1322" y="638" class="tiny muted">status · dates · scope · value</text>
+  <path d="M988 608h40" stroke="#708ba7" stroke-width="2.5" marker-end="url(#arrowBlue)"/>
+  <path d="M1261 608h40" stroke="#708ba7" stroke-width="2.5" marker-end="url(#arrowBlue)"/>
+  <text x="993" y="594" class="tiny muted">converts / links</text><text x="1265" y="594" class="tiny muted">owns</text>
+  <path d="M873 658v42h543v-42" fill="none" stroke="#c18b6b" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrowOrange)"/>
+  <text x="1038" y="693" class="tiny muted">accepted proposal + deposit can create project from lead</text>
+
+  <!-- workflow data -->
+  <rect x="758" y="715" width="230" height="98" rx="11" fill="#fffaf0" stroke="#ecd9a6"/>
+  <text x="776" y="743" font-size="17" font-weight="700">proposals + payments</text><text x="776" y="768" class="tiny muted">lead_id / project_id</text><text x="776" y="792" class="tiny muted">versions · approvals · receipts</text>
+  <rect x="1031" y="715" width="230" height="98" rx="11" fill="#f5f6ff" stroke="#d7d8f5"/>
+  <text x="1049" y="743" font-size="17" font-weight="700">project_tasks</text><text x="1049" y="768" class="tiny muted">project_id · assignee_id</text><text x="1049" y="792" class="tiny muted">due date · priority · status</text>
+  <rect x="1304" y="715" width="218" height="98" rx="11" fill="#f5f6ff" stroke="#d7d8f5"/>
+  <text x="1322" y="743" font-size="17" font-weight="700">board_tickets</text><text x="1322" y="768" class="tiny muted">project_id · owner_id</text><text x="1322" y="792" class="tiny muted">separate Kanban workflow</text>
+  <path d="M1413 658v48" stroke="#708ba7" stroke-width="2.5" marker-end="url(#arrowBlue)"/>
+  <path d="M1413 706h-268v6" fill="none" stroke="#708ba7" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <path d="M1413 706v6" fill="none" stroke="#708ba7" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <path d="M873 658v49h-0v6" fill="none" stroke="#708ba7" stroke-width="2" marker-end="url(#arrowBlue)"/>
+
+  <rect x="758" y="850" width="350" height="94" rx="11" fill="#f8f9fb" stroke="#d8e0e9"/>
+  <text x="776" y="879" font-size="17" font-weight="700">calendar_events</text><text x="776" y="904" class="tiny muted">workspace_id · date/time · type · optional lead/project/task link</text><text x="776" y="928" class="tiny muted">Use explicit foreign keys or a validated link table.</text>
+  <rect x="1132" y="850" width="390" height="94" rx="11" fill="#f8f9fb" stroke="#d8e0e9"/>
+  <text x="1150" y="879" font-size="17" font-weight="700">audit_events</text><text x="1150" y="904" class="tiny muted">workspace_id · actor_id · action · entity · timestamp</text><text x="1150" y="928" class="tiny muted">Write on the server for important changes.</text>
+  <path d="M863 815v28" stroke="#708ba7" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <path d="M1146 815v28" stroke="#708ba7" stroke-width="2" marker-end="url(#arrowBlue)"/>
+
+  <rect x="492" y="978" width="1030" height="54" rx="10" fill="#edf4fc"/>
+  <text x="512" y="1001" class="small" font-weight="700" fill="#285f9f">Design rule</text>
+  <text x="610" y="1001" class="small">Every business query is scoped to the authenticated workspace; the server enforces roles.</text>
+  <text x="512" y="1022" class="tiny muted">Backups, migrations, validation, and auditability belong in the backend/database layer—not in browser state.</text>
+</svg>

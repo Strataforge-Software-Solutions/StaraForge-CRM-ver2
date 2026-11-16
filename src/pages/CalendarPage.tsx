@@ -1,19 +1,11 @@
 import { useRef, useState } from 'react'
 import { Activity, ArrowRight, CalendarDays, CalendarPlus, ChevronDown, ChevronLeft, ChevronRight, Clock, Plus, X } from 'lucide-react'
 import { CustomDatePicker } from '../components/CustomControls'
+import { useDatabaseCollection } from '../lib/database'
+import { showWorkspaceToast } from '../lib/workspaceToast'
 
 type CalendarEvent = { id: number; date: string; time: string; title: string; detail: string; kind: 'Meeting' | 'Task' | 'Project' | 'Lead' }
-const initialCalendarEvents: CalendarEvent[] = [
-  { id: 1, date: '2026-11-02', time: '9:30 AM', title: 'Landing page review', detail: 'Company ABC Website', kind: 'Project' },
-  { id: 2, date: '2026-11-04', time: '1:00 PM', title: 'Follow up with Jollibee2', detail: 'Lead follow-up', kind: 'Lead' },
-  { id: 3, date: '2026-11-05', time: '10:00 AM', title: 'Client kickoff', detail: 'Jollibee POS System', kind: 'Meeting' },
-  { id: 4, date: '2026-11-05', time: '2:00 PM', title: 'Update the UI', detail: 'Company ABC Website', kind: 'Task' },
-  { id: 5, date: '2026-11-06', time: '11:00 AM', title: 'VioTrack progress check', detail: 'VioTrack Monitoring System Website', kind: 'Meeting' },
-  { id: 6, date: '2026-11-09', time: '3:30 PM', title: 'Proposal follow-up', detail: 'Mr. Jose', kind: 'Lead' },
-  { id: 7, date: '2026-11-12', time: '9:00 AM', title: 'QA checkout flow', detail: 'Jollibee POS System', kind: 'Task' },
-  { id: 8, date: '2026-11-18', time: '1:30 PM', title: 'Website handoff', detail: 'VioTrack', kind: 'Project' },
-  { id: 9, date: '2026-11-24', time: '10:30 AM', title: 'Discovery call', detail: 'New lead', kind: 'Meeting' },
-]
+const initialCalendarEvents: CalendarEvent[] = []
 
 const calendarDateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 const startOfCalendarWeek = (date: Date) => {
@@ -38,7 +30,7 @@ function CalendarKindSelect({ value, onChange }: { value: CalendarEvent['kind'];
 }
 
 export default function CalendarPage() {
-  const [events, setEvents] = useState(initialCalendarEvents)
+  const [events, setEvents] = useDatabaseCollection('calendar', initialCalendarEvents)
   const [month, setMonth] = useState(new Date(2026, 10, 1))
   const [selectedDate, setSelectedDate] = useState(new Date(2026, 10, 5))
   const [view, setView] = useState<'Month' | 'Week'>('Month')
@@ -86,6 +78,7 @@ export default function CalendarPage() {
     if (!draft.title.trim() || !draft.date) { setError('Add an event title and date to continue.'); return }
     const item: CalendarEvent = { ...draft, id: Date.now(), title: draft.title.trim(), detail: draft.detail.trim() || draft.kind }
     setEvents(current => [...current, item])
+    showWorkspaceToast('Calendar event added.')
     const date = new Date(`${draft.date}T12:00:00`)
     setSelectedDate(date)
     setMonth(new Date(date.getFullYear(), date.getMonth(), 1))

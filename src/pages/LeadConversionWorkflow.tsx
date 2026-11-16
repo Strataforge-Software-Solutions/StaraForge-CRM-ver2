@@ -1,18 +1,28 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { AlertCircle, ArrowRight, BriefcaseBusiness, CalendarDays, Check, CheckCircle2, CircleDollarSign, CreditCard, FileText, Plus, ReceiptText } from 'lucide-react'
 import { CustomDatePicker, CustomSelect } from '../components/CustomControls'
+import { useDatabaseCollection } from '../lib/database'
+import { showWorkspaceToast } from '../lib/workspaceToast'
 import type { LeadDirectoryRow } from './LeadsPage'
 import type { ProjectDirectoryRow } from './ProjectsPage'
 
 type Proposal = { id: number; name: string; amount: number; created: string; status: 'Draft' | 'Sent' | 'Accepted' }
 type Acceptance = { proposalId: number; method: string; evidence: string; note: string; date: string }
 type Deposit = { amount: number; date: string; note: string }
+type LeadWorkflowData = { proposals: Proposal[]; selectedProposal: number | null; acceptance: Acceptance | null; deposits: Deposit[]; createdProject: boolean; projectName?: string; clientType?: string; startDate?: string; targetDate?: string }
+const emptyWorkflow: LeadWorkflowData = { proposals: [], selectedProposal: null, acceptance: null, deposits: [], createdProject: false }
+const emptyWorkflows: Record<string, LeadWorkflowData> = {}
+
+function workflowKeyFor(lead: LeadDirectoryRow) {
+  return lead.email.trim().toLowerCase() || `${lead.name.trim().toLowerCase()}::${lead.client.trim().toLowerCase()}`
+}
 
 export default function LeadConversionWorkflow({ lead, onConvert, onLeadStatusChange }: { lead: LeadDirectoryRow; onConvert: (project: ProjectDirectoryRow) => void; onLeadStatusChange: (status: string) => void }) {
-  const [proposals, setProposals] = useState<Proposal[]>([])
-  const [selectedProposal, setSelectedProposal] = useState<number | null>(null)
-  const [acceptance, setAcceptance] = useState<Acceptance | null>(null)
-  const [deposits, setDeposits] = useState<Deposit[]>([])
+  const [workflows, setWorkflows] = useDatabaseCollection<Record<string, LeadWorkflowData>>('leadWorkflows', emptyWorkflows)
+  const workflowKey = workflowKeyFor(lead)
+  const workflow = workflows[workflowKey] ?? emptyWorkflow
+  const { proposals, selectedProposal, acceptance, deposits, createdProject } = workflow
+  const updateWorkflow = (patch: Partial<LeadWorkflowData>) => setWorkflows(current => ({ ...current, [workflowKey]: { ...(current[workflowKey] ?? emptyWorkflow), ...patch } }))
   const [showProposalForm, setShowProposalForm] = useState(false)
   const [showAcceptanceForm, setShowAcceptanceForm] = useState(false)
   const [showDepositForm, setShowDepositForm] = useState(false)
@@ -24,18 +34,17 @@ export default function LeadConversionWorkflow({ lead, onConvert, onLeadStatusCh
   const [depositAmount, setDepositAmount] = useState('')
   const [depositDate, setDepositDate] = useState('')
   const [depositNote, setDepositNote] = useState('')
-  const [projectName, setProjectName] = useState(`${lead.client} website`)
-  const [clientType, setClientType] = useState('Organization')
-  const [startDate, setStartDate] = useState('')
-  const [targetDate, setTargetDate] = useState('')
-  const [notice, setNotice] = useState('')
-  const [createdProject, setCreatedProject] = useState(false)
+  const projectName = workflow.projectName ?? `${lead.client} website`
+  const clientType = workflow.clientType ?? 'Organization'
+  const startDate = workflow.startDate ?? ''
+  const targetDate = workflow.targetDate ?? ''
   const accepted = Boolean(acceptance)
   const deposited = deposits.reduce((total, item) => total + item.amount, 0)
   const currentProposal = acceptance ? proposals.find(item => item.id === acceptance.proposalId) ?? null : proposals.find(item => item.id === selectedProposal) ?? proposals[proposals.length - 1] ?? null
   const currency = lead.budget.match(/^(PHP|USD)/)?.[1] ?? 'PHP'
   const formatMoney = (amount: number) => `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  const progress = createdProject ? 4 : deposited > 0 ? 3 : accepted ? 2 : proposals.some(item => item.status === 'Sent') ? 1 : proposals.length ? 0 : -1
+  const stageShowsProposalSent = lead.status === 'Proposal sent' && !proposals.some(item => item.status === 'Sent' || item.status === 'Accepted')
+  const progress = createdProject ? 4 : deposited > 0 ? 3 : accepted ? 2 : proposals.some(item => item.status === 'Sent') || stageShowsProposalSent ? 1 : proposals.length ? 0 : -1
   const progressLabels = ['Draft', 'Sent', 'Accepted', 'Deposit recorded']
   const progressDescription = progress < 0 ? 'No proposal has been created yet.' : `${progressLabels[Math.min(progress, 3)]} · ${currentProposal?.name ?? 'Proposal'}`
   const versions = useMemo(() => [...proposals].sort((a, b) => b.id - a.id), [proposals])
@@ -45,41 +54,40 @@ export default function LeadConversionWorkflow({ lead, onConvert, onLeadStatusCh
     const amount = Number(proposalAmount)
     if (!proposalName.trim() || !Number.isFinite(amount) || amount <= 0) return
     const proposal = { id: Date.now(), name: proposalName.trim(), amount, created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), status: 'Draft' as const }
-    setProposals(current => [...current, proposal])
-    setSelectedProposal(proposal.id)
+    updateWorkflow({ proposals: [...proposals, proposal], selectedProposal: proposal.id })
     setProposalName('')
     setProposalAmount('')
     setShowProposalForm(false)
-    if (!proposals.some(item => item.status === 'Sent' || item.status === 'Accepted')) onLeadStatusChange('Discovery')
-    setNotice('Proposal draft created.')
+    if (lead.status !== 'Proposal sent' && !proposals.some(item => item.status === 'Sent' || item.status === 'Accepted')) onLeadStatusChange('Discovery')
+    showWorkspaceToast('Proposal draft created.')
   }
 
   const sendProposal = (proposal: Proposal) => {
-    setProposals(current => current.map(item => item.id === proposal.id ? { ...item, status: 'Sent' } : item))
+    updateWorkflow({ proposals: proposals.map(item => item.id === proposal.id ? { ...item, status: 'Sent' } : item), selectedProposal: proposal.id })
     onLeadStatusChange('Proposal sent')
-    setNotice('Proposal marked as sent.')
+    showWorkspaceToast('Proposal marked as sent.')
   }
 
   const recordAcceptance = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!currentProposal || !evidence.trim() || !acceptanceNote.trim()) return
-    setAcceptance({ proposalId: currentProposal.id, method: evidenceMethod, evidence: evidence.trim(), note: acceptanceNote.trim(), date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) })
-    setProposals(current => current.map(item => item.id === currentProposal.id ? { ...item, status: 'Accepted' } : item))
+    const nextAcceptance = { proposalId: currentProposal.id, method: evidenceMethod, evidence: evidence.trim(), note: acceptanceNote.trim(), date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
+    updateWorkflow({ acceptance: nextAcceptance, proposals: proposals.map(item => item.id === currentProposal.id ? { ...item, status: 'Accepted' } : item) })
     onLeadStatusChange('Awaiting deposit')
     setShowAcceptanceForm(false)
-    setNotice('Client acceptance recorded.')
+    showWorkspaceToast('Client acceptance recorded.')
   }
 
   const recordDeposit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const amount = Number(depositAmount)
     if (!accepted || !Number.isFinite(amount) || amount <= 0 || !depositDate) return
-    setDeposits(current => [...current, { amount, date: depositDate, note: depositNote.trim() }])
+    updateWorkflow({ deposits: [...deposits, { amount, date: depositDate, note: depositNote.trim() }] })
     onLeadStatusChange('Won')
     setDepositAmount('')
     setDepositNote('')
     setShowDepositForm(false)
-    setNotice('Deposit recorded in this session.')
+    showWorkspaceToast('Deposit record saved.')
   }
 
   const createProject = (event: FormEvent<HTMLFormElement>) => {
@@ -93,8 +101,8 @@ export default function LeadConversionWorkflow({ lead, onConvert, onLeadStatusCh
       value: formatMoney(currentProposal?.amount ?? 0),
       status: 'Planned', tone: lead.tone,
     }
-    setCreatedProject(true)
-    setNotice('Project setup is complete.')
+    updateWorkflow({ createdProject: true })
+    showWorkspaceToast('Project setup is complete.')
     onConvert(project)
   }
 
@@ -110,14 +118,15 @@ export default function LeadConversionWorkflow({ lead, onConvert, onLeadStatusCh
       <section className="task-detail-card proposal-versions-panel">
         <div className="workflow-section-heading"><div><span className="workflow-step-kicker">VERSION HISTORY</span><h2>Proposal versions</h2><p>Create priced versions, then record when a proposal is sent or accepted.</p></div><button className="workflow-quiet-button" onClick={() => setShowProposalForm(value => !value)}><Plus size={14}/>{showProposalForm ? 'Cancel' : 'Create version'}</button></div>
         {showProposalForm && <form className="workflow-form proposal-create-form" onSubmit={createProposal}><label>Version name<input required value={proposalName} onChange={event => setProposalName(event.target.value)} placeholder="e.g. Website build"/></label><label>Proposal amount<input required min="0.01" step="0.01" type="number" value={proposalAmount} onChange={event => setProposalAmount(event.target.value)} placeholder="0.00"/></label><button className="workflow-primary-button" type="submit">Save draft</button></form>}
+        {stageShowsProposalSent && versions.length > 0 && <div className="workflow-empty compact"><AlertCircle size={17}/><span>The lead is marked Proposal sent, but no saved version is marked Sent. Add the missing version details below; the existing lead stage will stay unchanged.</span></div>}
         {versions.length ? <div className="proposal-version-list">{versions.map(version => <article className={`proposal-version ${selectedProposal === version.id ? 'selected' : ''}`} key={version.id}>
           <div className="proposal-version-top"><div><b>{version.name}</b><small>Version {versions.length - versions.indexOf(version)} · {version.status}</small></div><b className="workflow-money">{formatMoney(version.amount)}</b></div>
           <div className="proposal-version-meta">Created {version.created}<span className={`workflow-state ${version.status === 'Accepted' ? 'complete' : ''}`}>{version.status}</span></div>
-          <div className="proposal-version-actions"><button onClick={() => setSelectedProposal(version.id)}>Select</button>{version.status === 'Draft' && <button onClick={() => sendProposal(version)}>Mark sent</button>}{version.status === 'Sent' && !accepted && <button onClick={() => { setSelectedProposal(version.id); setShowAcceptanceForm(true) }}>Record acceptance</button>}</div>
-        </article>)}</div> : <div className="workflow-empty"><FileText size={19}/><b>No proposal versions yet</b><span>Create a draft to start tracking proposal progress.</span></div>}
+          <div className="proposal-version-actions">{version.status === 'Draft' && <button onClick={() => sendProposal(version)}>Mark sent</button>}{version.status === 'Sent' && !accepted && <button onClick={() => { updateWorkflow({ selectedProposal: version.id }); setShowAcceptanceForm(true) }}>Record acceptance</button>}</div>
+        </article>)}</div> : stageShowsProposalSent ? <div className="workflow-empty"><FileText size={19}/><b>Proposal marked as sent</b><span>The lead stage is Proposal sent, but version name, amount, and send date have not been recorded.</span><button className="workflow-quiet-button" onClick={() => setShowProposalForm(true)}>Add version details</button></div> : <div className="workflow-empty"><FileText size={19}/><b>No proposal versions yet</b><span>Create a draft to start tracking proposal progress.</span></div>}
         {showAcceptanceForm && <form className="workflow-form acceptance-form" onSubmit={recordAcceptance}><div className="workflow-form-title"><CheckCircle2 size={16}/><b>Record client acceptance</b></div><label>Evidence type<CustomSelect ariaLabel="Evidence type" value={evidenceMethod} options={['Approval message', 'Signed file']} onChange={setEvidenceMethod}/></label><label>Evidence reference<input required value={evidence} onChange={event => setEvidence(event.target.value)} placeholder={evidenceMethod === 'Signed file' ? 'File name or storage reference' : 'Message, email, or approval reference'}/></label><label className="wide">Acceptance note<textarea required rows={2} value={acceptanceNote} onChange={event => setAcceptanceNote(event.target.value)} placeholder="Add a short note about the client’s approval."/></label><button className="workflow-primary-button" type="submit">Save acceptance</button></form>}
         {acceptance && <div className="acceptance-record"><div><CheckCircle2 size={15}/><b>Client acceptance recorded</b><span>{acceptance.date}</span></div><p><span>{acceptance.method}</span>{acceptance.evidence}</p><p><span>Acceptance note</span>{acceptance.note}</p></div>}
-        <p className="workflow-footnote">Proposal, approval, and payment records stay in this browser session until backend storage is connected.</p>
+        <p className="workflow-footnote">Proposal versions, approvals, and payment records are saved to your Supabase workspace.</p>
       </section>
 
       {accepted && <section className="task-detail-card deposit-panel">
@@ -131,17 +140,16 @@ export default function LeadConversionWorkflow({ lead, onConvert, onLeadStatusCh
 
       {accepted && deposited > 0 && <section className="task-detail-card project-setup-panel">
         <div className="workflow-step-heading"><div><span className="workflow-step-kicker">STEP 3: PROJECT SETUP</span><h2>Convert to website project</h2><p>Set project details once proposal acceptance and a deposit are recorded.</p></div><span className={`workflow-state ${createdProject ? 'complete' : accepted && deposited > 0 ? 'ready' : ''}`}>{createdProject ? 'Created' : accepted && deposited > 0 ? 'Ready' : 'Locked'}</span></div>
-        {!accepted || deposited <= 0 ? <div className="workflow-empty compact"><BriefcaseBusiness size={17}/><span>Accept a proposal and record a deposit before setting up the project.</span></div> : createdProject ? <div className="project-created-notice"><CheckCircle2 size={17}/><div><b>{projectName}</b><span>Project added to your Projects page for this session.</span></div></div> : <form className="workflow-form project-setup-form" onSubmit={createProject}>
-          <label className="wide">Project name<input required value={projectName} onChange={event => setProjectName(event.target.value)} placeholder="Website project name"/></label>
+        {!accepted || deposited <= 0 ? <div className="workflow-empty compact"><BriefcaseBusiness size={17}/><span>Accept a proposal and record a deposit before setting up the project.</span></div> : createdProject ? <div className="project-created-notice"><CheckCircle2 size={17}/><div><b>{projectName}</b><span>Project saved to your Projects page.</span></div></div> : <form className="workflow-form project-setup-form" onSubmit={createProject}>
+          <label className="wide">Project name<input required value={projectName} onChange={event => updateWorkflow({ projectName: event.target.value })} placeholder="Website project name"/></label>
           <label>Existing client<input value={lead.client} readOnly/></label>
-          <label>Client type<CustomSelect ariaLabel="Client type" value={clientType} options={['Organization', 'Individual']} onChange={setClientType}/></label>
-          <label>Start date <small>Optional</small><CustomDatePicker ariaLabel="Start date" value={startDate} onChange={setStartDate}/></label>
-          <label>Target date <small>Optional</small><CustomDatePicker ariaLabel="Target date" value={targetDate} onChange={setTargetDate}/></label>
+          <label>Client type<CustomSelect ariaLabel="Client type" value={clientType} options={['Organization', 'Individual']} onChange={value => updateWorkflow({ clientType: value })}/></label>
+          <label>Start date <small>Optional</small><CustomDatePicker ariaLabel="Start date" value={startDate} onChange={value => updateWorkflow({ startDate: value })}/></label>
+          <label>Target date <small>Optional</small><CustomDatePicker ariaLabel="Target date" value={targetDate} onChange={value => updateWorkflow({ targetDate: value })}/></label>
           <div className="project-setup-value"><ReceiptText size={15}/><span>Agreed value</span><b>{formatMoney(currentProposal?.amount ?? 0)}</b></div>
           <button className="workflow-primary-button" type="submit"><BriefcaseBusiness size={14}/>Convert to project <ArrowRight size={14}/></button>
         </form>}
       </section>}
     </div>
-    {notice && <div className="workflow-toast" role="status"><CheckCircle2 size={15}/>{notice}<button onClick={() => setNotice('')} aria-label="Dismiss notification">×</button></div>}
   </div>
 }

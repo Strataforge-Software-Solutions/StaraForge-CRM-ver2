@@ -57,7 +57,7 @@ export function CustomSelect({ value, options, onChange, ariaLabel, className = 
     <button type="button" className="custom-select-trigger" role="combobox" aria-label={ariaLabel} aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} onClick={() => setOpen(current => !current)} onKeyDown={event => { if (event.key === 'Escape') setOpen(false); if (event.key === 'ArrowDown' && !open) { event.preventDefault(); setOpen(true) } }}>
       <span>{selectedOption.label}</span>{showChevron && <ChevronDown size={14}/>}
     </button>
-    {open && createPortal(<div ref={menuRef} className="custom-select-menu" style={menuStyle} id={listId} role="listbox" aria-label={ariaLabel ?? 'Options'}>
+    {open && createPortal(<div ref={menuRef} className={`custom-select-menu ${className.split(' ').includes('rows-select') ? 'rows-select-menu' : ''}`} style={menuStyle} id={listId} role="listbox" aria-label={ariaLabel ?? 'Options'}>
       {normalized.map(option => <button key={option.value} type="button" role="option" aria-selected={selectedOption.value === option.value} className={selectedOption.value === option.value ? 'selected' : ''} onClick={() => { if (onChange) onChange(option.value); else setLocalValue(option.value); setOpen(false) }}>{option.label}</button>)}
     </div>, document.body)}
   </div>

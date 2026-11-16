@@ -1,9 +1,10 @@
 import { Mail, Phone, Eye, Pencil, Trash2, X, Users, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CustomDatePicker, CustomSelect } from './CustomControls'
+import { showWorkspaceToast } from '../lib/workspaceToast'
 
-export function DirectoryHeader({ section, title, description, action, onAction }: { section: string; title: string; description: string; action: string; onAction: () => void }) {
-  return <div className="directory-heading"><div><span className="directory-eyebrow">{section}</span><h1>{title}</h1><p>{description}</p></div><button className="directory-add" onClick={onAction}><Plus size={17}/>{action}</button></div>
+export function DirectoryHeader({ section, title, description, action, onAction }: { section: string; title: string; description: string; action?: string; onAction?: () => void }) {
+  return <div className="directory-heading"><div><span className="directory-eyebrow">{section}</span><h1>{title}</h1><p>{description}</p></div>{action && onAction && <button className="directory-add" onClick={onAction}><Plus size={17}/>{action}</button>}</div>
 }
 
 export function DirectoryStat({ icon: Icon, label, value, detail, tone }: { icon: typeof Users; label: string; value: string; detail: string; tone: string }) {
@@ -54,8 +55,15 @@ export function RecordActionButtons({ name, onAction }: { name: string; onAction
 
 export function RecordActionDialog({ action, onClose }: { action: DirectoryAction; onClose: () => void }) {
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries((action.editSections ?? []).flatMap(section => section.fields.map(field => [field.key, field.value]))))
+  useEffect(() => {
+    if (action.mode !== 'edit') return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [action.mode])
   const title = action.mode === 'view' ? `View ${action.name}` : action.mode === 'edit' ? action.editTitle ?? `Edit ${action.name}` : `Delete ${action.name}?`
-  return <div className={`modal-backdrop ${action.mode === 'edit' ? 'record-edit-backdrop' : ''}`} onClick={onClose}><form className={`modal record-action-modal ${action.mode === 'edit' ? 'is-edit' : ''} ${action.modalClassName ?? ''}`} onClick={event => event.stopPropagation()} onSubmit={event => { event.preventDefault(); if (action.mode === 'edit') action.onSave(values); if (action.mode === 'delete') action.onDelete(); onClose() }}>
+  const recordLabel = (action.editTitle ?? 'Record').replace(/^Edit\s+/i, '')
+  return <div className={`modal-backdrop ${action.mode === 'edit' ? 'record-edit-backdrop' : ''}`} onClick={onClose}><form className={`modal record-action-modal ${action.mode === 'edit' ? 'is-edit' : ''} ${action.modalClassName ?? ''}`} onClick={event => event.stopPropagation()} onSubmit={event => { event.preventDefault(); if (action.mode === 'edit') { action.onSave(values); showWorkspaceToast(`${recordLabel} updated.`) } if (action.mode === 'delete') { action.onDelete(); showWorkspaceToast(`${recordLabel} deleted.`) } onClose() }}>
     <div className="modal-head"><div><span className="directory-eyebrow">{action.mode === 'delete' ? 'CONFIRM ACTION' : action.mode === 'edit' ? 'STRATAFORGE WORKSPACE' : 'DIRECTORY RECORD'}</span><h2>{title}</h2>{action.mode === 'edit' && action.editDescription && <p>{action.editDescription}</p>}</div><button className="icon-button" type="button" aria-label="Close" onClick={onClose}><X size={16}/></button></div>
     {action.mode === 'view' && <dl className="record-detail-list">{action.fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
     {action.mode === 'edit' && <div className="record-edit-body">{action.editSections?.map((section, sectionIndex) => <section className="record-edit-section" key={section.title}><div className="record-edit-section-heading"><b>{section.title}</b>{section.description && <p>{section.description}</p>}</div><div className="record-edit-fields">{section.fields.map((field, index) => <label className={`record-edit-field ${field.type === 'textarea' || field.wide ? 'wide' : ''}`} key={field.key}>{field.label}{field.type === 'textarea' ? <textarea rows={4} autoFocus={sectionIndex === 0 && index === 0} value={values[field.key] ?? ''} placeholder={field.placeholder} onChange={event => setValues(current => ({ ...current, [field.key]: event.target.value }))}/> : field.type === 'select' ? <CustomSelect ariaLabel={field.label} value={values[field.key] ?? field.options?.[0] ?? ''} options={field.options ?? []} onChange={value => setValues(current => ({ ...current, [field.key]: value }))}/> : field.type === 'date' ? <CustomDatePicker ariaLabel={field.label} value={values[field.key] ?? ''} onChange={value => setValues(current => ({ ...current, [field.key]: value }))}/> : <input autoFocus={sectionIndex === 0 && index === 0} type={field.type ?? 'text'} value={values[field.key] ?? ''} placeholder={field.placeholder} onChange={event => setValues(current => ({ ...current, [field.key]: event.target.value }))}/>}</label>)}</div></section>)}<p className="record-edit-note">{action.editNote ?? 'Changes are saved in this page session.'}</p></div>}

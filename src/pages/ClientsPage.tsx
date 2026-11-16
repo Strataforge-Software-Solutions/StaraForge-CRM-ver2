@@ -2,27 +2,24 @@ import { useState } from 'react'
 import { ArrowRight, Building2, Check, ChevronDown, ChevronLeft, ChevronRight, Layers3, Mail, Phone, Plus, Search, Trash2, Users, X } from 'lucide-react'
 import { ContactDetails, DirectoryHeader, MetricsStrip, DirectoryTabs, RecordActionButtons, RecordActionDialog, type DirectoryAction } from '../components/DirectoryShared'
 import { CustomSelect } from '../components/CustomControls'
+import { useDatabaseCollection } from '../lib/database'
+import { showWorkspaceToast } from '../lib/workspaceToast'
 import { projectDirectory, type ProjectDirectoryRow } from './ProjectsPage'
 
 export type ClientDirectoryRow = { name: string; initials: string; kind: string; contact: string; relation: string; email: string; phone: string; status: string; projects: number; value: string; updated: string; tone: string; website?: string; location?: string }
 type ClientDrawerTab = 'Overview' | 'Projects' | 'Notes' | 'CRM changes'
 
-const clientDirectory: ClientDirectoryRow[] = [
-  { name: 'Jollibee', initials: 'J', kind: 'Organization', contact: 'Jollibee', relation: 'From linked inquiry', email: 'jollibee@gmail.com', phone: '67676767', status: 'Active', projects: 1, value: 'PHP 2,000.00', updated: 'Nov 4, 2026', tone: 'orange' },
-  { name: 'Strataforge', initials: 'ST', kind: 'Organization', contact: 'Ber', relation: 'Company', email: 'asdasdasd@gmail.com', phone: '213213', status: 'Active', projects: 0, value: '—', updated: 'Nov 4, 2026', tone: 'blue' },
-  { name: 'VioTrack', initials: 'VI', kind: 'Organization', contact: 'VioTrack', relation: 'From linked inquiry', email: 'viotrack@gmail.com', phone: '09876543211', status: 'Active', projects: 1, value: 'PHP 3,000.00', updated: 'Nov 2, 2026', tone: 'purple' },
-  { name: 'Company ABC', initials: 'CA', kind: 'Individual', contact: '12345', relation: 'From linked inquiry', email: 'companyabc@gmail.com', phone: '0987654321', status: 'Active', projects: 1, value: 'USD 100.00', updated: 'Oct 31, 2026', tone: 'orange' },
-]
+export const clientDirectory: ClientDirectoryRow[] = []
 
 
 export default function ClientsPage({ onAdd, onOpenRecord }: { onAdd: () => void; onOpenRecord: (client: ClientDirectoryRow) => void }) {
   const [active, setActive] = useState('all')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('Recently updated')
-  const [rows, setRows] = useState(clientDirectory)
+  const [rows, setRows] = useDatabaseCollection('clients', clientDirectory)
   const [action, setAction] = useState<DirectoryAction | null>(null)
   const [selectedClient, setSelectedClient] = useState<ClientDirectoryRow | null>(null)
-  const tabs = [{ label: 'All clients', value: 'all', count: 4 }, { label: 'Active', value: 'Active', count: 4 }, { label: 'On hold', value: 'On hold', count: 0 }, { label: 'Inactive', value: 'Inactive', count: 0 }]
+  const tabs = [{ label: 'All clients', value: 'all', count: rows.length }, { label: 'Active', value: 'Active', count: rows.filter(row => row.status === 'Active').length }, { label: 'On hold', value: 'On hold', count: rows.filter(row => row.status === 'On hold').length }, { label: 'Inactive', value: 'Inactive', count: rows.filter(row => row.status === 'Inactive').length }]
   const visible = rows.filter(row => (active === 'all' || row.status === active) && `${row.name} ${row.contact} ${row.email}`.toLowerCase().includes(search.toLowerCase()))
   const sorted = sort === 'Name A–Z' ? [...visible].sort((a, b) => a.name.localeCompare(b.name)) : sort === 'Project count' ? [...visible].sort((a, b) => b.projects - a.projects) : visible
   const openAction = (row: ClientDirectoryRow, mode: Exclude<DirectoryAction['mode'], 'view'>) => setAction({
@@ -84,6 +81,7 @@ function ClientDetailDrawer({ client, onClose, onDelete, onOpenRecord }: { clien
     if (!tag || tags.some(item => item.toLowerCase() === tag.toLowerCase())) return
     setTags(current => [...current, tag])
     setTagDraft('')
+    showWorkspaceToast('Client tag added.')
   }
   const saveNote = (event: React.FormEvent) => {
     event.preventDefault()
@@ -91,6 +89,7 @@ function ClientDetailDrawer({ client, onClose, onDelete, onOpenRecord }: { clien
     if (!note) return
     setNotes(current => [note, ...current])
     setNoteDraft('')
+    showWorkspaceToast('Client note added.')
   }
   const tabs: ClientDrawerTab[] = ['Overview', 'Projects', 'Notes', 'CRM changes']
   return <div className="client-drawer-backdrop" onClick={onClose}><aside className="client-detail-drawer" role="dialog" aria-modal="true" aria-label={`${client.name} client details`} onClick={event => event.stopPropagation()}>
@@ -105,13 +104,13 @@ function ClientDetailDrawer({ client, onClose, onDelete, onOpenRecord }: { clien
           {relatedProjects.length ? <div className="client-related-projects">{relatedProjects.map(project => <ProjectMiniCard key={project.name} project={project}/>)}</div> : <div className="client-drawer-empty compact-empty">No projects linked to this client.</div>}
         </section>
         <section className="client-drawer-section"><div className="client-section-heading"><h3>Tags</h3><span>{tags.length}/12</span></div>
-          {tags.length ? <div className="client-tag-list">{tags.map(tag => <button key={tag} onClick={() => setTags(current => current.filter(item => item !== tag))}>{tag}<X size={12}/></button>)}</div> : <p className="client-muted">No tags yet.</p>}
+          {tags.length ? <div className="client-tag-list">{tags.map(tag => <button key={tag} onClick={() => { setTags(current => current.filter(item => item !== tag)); showWorkspaceToast('Client tag removed.') }}>{tag}<X size={12}/></button>)}</div> : <p className="client-muted">No tags yet.</p>}
           <form className="client-tag-form" onSubmit={addTag}><input value={tagDraft} onChange={event => setTagDraft(event.target.value)} maxLength={24} placeholder="Add a tag..." aria-label="New client tag"/><button type="submit"><Plus size={13}/> Add tag</button></form>
         </section>
         <section className="client-drawer-section"><div className="client-section-heading"><h3>Recent activity</h3><span className="client-muted">Latest updates</span></div><div className="client-drawer-empty activity-empty">No client activity has been recorded yet.</div></section>
       </>}
       {tab === 'Projects' && <section className="client-drawer-section"><h3>Projects</h3><p className="client-muted">Projects linked to {client.name}</p>{relatedProjects.length ? <div className="client-related-projects">{relatedProjects.map(project => <ProjectMiniCard key={project.name} project={project}/>)}</div> : <div className="client-drawer-empty">No projects linked to this client yet.</div>}</section>}
-      {tab === 'Notes' && <section className="client-drawer-section"><h3>Notes</h3><form className="client-note-form" onSubmit={saveNote}><textarea value={noteDraft} onChange={event => setNoteDraft(event.target.value)} placeholder="Write a note about this client..." rows={4}/><button type="submit" disabled={!noteDraft.trim()}>Save note</button></form>{notes.length ? <div className="client-notes-list">{notes.map((note, index) => <article key={`${index}-${note}`}><span>Ber · Just now</span><p>{note}</p></article>)}</div> : <div className="client-drawer-empty">No notes yet.</div>}</section>}
+      {tab === 'Notes' && <section className="client-drawer-section"><h3>Notes</h3><form className="client-note-form" onSubmit={saveNote}><textarea value={noteDraft} onChange={event => setNoteDraft(event.target.value)} placeholder="Write a note about this client..." rows={4}/><button type="submit" disabled={!noteDraft.trim()}>Save note</button></form>{notes.length ? <div className="client-notes-list">{notes.map((note, index) => <article key={`${index}-${note}`}><span>Workspace member · Just now</span><p>{note}</p></article>)}</div> : <div className="client-drawer-empty">No notes yet.</div>}</section>}
       {tab === 'CRM changes' && <section className="client-drawer-section"><h3>CRM changes</h3><div className="client-drawer-empty">No changes have been recorded for this client yet.</div></section>}
     </div>
     <footer className="client-detail-footer"><button className="client-delete-button" onClick={onDelete}><Trash2 size={14}/>Delete client</button><button className="client-open-record-button" onClick={onOpenRecord}>Open full client record <ArrowRight size={14}/></button></footer>

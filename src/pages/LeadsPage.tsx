@@ -1,24 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowRight, Check, ChevronLeft, ChevronRight, ClipboardList, Phone, Plus, Search, Tag, Users, X } from 'lucide-react'
 import { ContactDetails, DirectoryHeader, MetricsStrip, DirectoryTabs, RecordActionButtons, RecordActionDialog, type DirectoryAction } from '../components/DirectoryShared'
 import { CustomSelect } from '../components/CustomControls'
+import { useDatabaseCollection } from '../lib/database'
+import { showWorkspaceToast } from '../lib/workspaceToast'
 
 export type LeadDirectoryRow = { name: string; client: string; initials: string; email: string; phone: string; source: string; type: string; budget: string; status: string; date: string; tone: string; location?: string; notes?: string; timeline?: string; followUpDate?: string }
 type LeadDrawerTab = 'Overview' | 'Activity' | 'Notes'
 
-const leadDirectory: LeadDirectoryRow[] = [
-  { name: 'Jollibee', client: 'Jollibee', initials: 'J', email: 'jollibee@gmail.com', phone: '67676767', source: 'Referral', type: 'Website', budget: 'PHP 2,000.00', status: 'New Leads', date: 'Nov 3, 2026', tone: 'orange' },
-  { name: 'Jollibee2', client: 'Jollibee', initials: 'JO', email: 'jollibee@gmail.com', phone: '67676767', source: 'Unspecified', type: 'Website', budget: 'Not discussed', status: 'Contacted', date: 'Nov 4, 2026', tone: 'blue' },
-  { name: 'Mr. Jose', client: 'Mr. Jose', initials: 'MJ', email: 'bahba@bahbah.com', phone: '6767', source: 'Referral', type: 'Frontend', budget: 'USD 10,000.00', status: 'Awaiting deposit', date: 'Nov 4, 2026', tone: 'green' },
-  { name: 'VioTrack', client: 'VioTrack', initials: 'V', email: 'viotrack@gmail.com', phone: '09876543211', source: 'Social Media: Facebook', type: 'Website', budget: 'PHP 3,000.00', status: 'Won', date: 'Nov 2, 2026', tone: 'purple' },
-  { name: 'Company ABC', client: '12345', initials: 'CA', email: 'companyabc@gmail.com', phone: '0987654321', source: 'Inquiry Form', type: 'Website', budget: 'USD 70.00', status: 'Won', date: 'Oct 31, 2026', tone: 'orange' },
-]
+export const leadDirectory: LeadDirectoryRow[] = []
 
 
 export default function LeadsPage({ onAdd, onFullWorkflow, statusOverrides = {} }: { onAdd: () => void; onFullWorkflow: (lead: LeadDirectoryRow) => void; statusOverrides?: Record<string, string> }) {
   const [active, setActive] = useState('all')
   const [search, setSearch] = useState('')
-  const [rows, setRows] = useState(() => leadDirectory.map(row => ({ ...row, status: statusOverrides[row.name] ?? row.status })))
+  const [rows, setRows] = useDatabaseCollection('leads', leadDirectory)
+  useEffect(() => {
+    if (Object.keys(statusOverrides).length) setRows(current => current.map(row => statusOverrides[row.name] ? { ...row, status: statusOverrides[row.name] } : row))
+  }, [setRows, statusOverrides])
   const [action, setAction] = useState<DirectoryAction | null>(null)
   const [selectedLead, setSelectedLead] = useState<LeadDirectoryRow | null>(null)
   const countStatus = (status: string) => rows.filter(row => row.status === status).length
@@ -91,7 +90,7 @@ export default function LeadsPage({ onAdd, onFullWorkflow, statusOverrides = {} 
       <div className="directory-panel-foot"><span>1–{visible.length} of {visible.length} leads</span><span className="pagination"><button disabled><ChevronLeft size={16}/></button>Page 1 of 1<button disabled><ChevronRight size={16}/></button></span><label>Rows <CustomSelect className="rows-select" value="10" options={['10', '25']}/></label></div>
     </section>
     {action && <RecordActionDialog key={`${action.mode}-${action.name}`} action={action} onClose={() => setAction(null)}/>}
-    {selectedLead && <LeadDetailDrawer key={selectedLead.name} lead={selectedLead} onClose={() => setSelectedLead(null)} onFullWorkflow={onFullWorkflow} onEdit={() => openAction(selectedLead, 'edit')}/>}
+    {selectedLead && <LeadDetailDrawer key={selectedLead.name} lead={selectedLead} onClose={() => setSelectedLead(null)} onFullWorkflow={onFullWorkflow} onEdit={() => { const lead = selectedLead; setSelectedLead(null); openAction(lead, 'edit') }}/>}
   </div>
 }
 
@@ -107,6 +106,7 @@ function LeadDetailDrawer({ lead, onClose, onFullWorkflow, onEdit }: { lead: Lea
     if (!tag || tags.length >= 12 || tags.some(item => item.toLowerCase() === tag.toLowerCase())) return
     setTags(current => [...current, tag])
     setTagDraft('')
+    showWorkspaceToast('Lead tag added.')
   }
   const saveNote = (event: React.FormEvent) => {
     event.preventDefault()
@@ -114,6 +114,7 @@ function LeadDetailDrawer({ lead, onClose, onFullWorkflow, onEdit }: { lead: Lea
     if (!note) return
     setNotes(current => [note, ...current])
     setNoteDraft('')
+    showWorkspaceToast('Lead note added.')
   }
   const tabs: LeadDrawerTab[] = ['Overview', 'Activity', 'Notes']
   return <div className="client-drawer-backdrop lead-drawer-backdrop" onClick={onClose}><aside className="client-detail-drawer lead-detail-drawer" role="dialog" aria-modal="true" aria-label={`${lead.name} lead details`} onClick={event => event.stopPropagation()}>
@@ -130,11 +131,11 @@ function LeadDetailDrawer({ lead, onClose, onFullWorkflow, onEdit }: { lead: Lea
           <div><small>Timeline</small><b>Not set</b></div><div><small>Location</small><b>Not provided</b></div>
         </section>
         <section className="client-drawer-section"><h3>About this opportunity</h3><div className="lead-opportunity-summary">Other inquiry for this client</div></section>
-        <section className="client-drawer-section"><div className="client-section-heading"><h3>Tags</h3><span>{tags.length}/12</span></div>{tags.length ? <div className="client-tag-list">{tags.map(tag => <button key={tag} onClick={() => setTags(current => current.filter(item => item !== tag))}>{tag}<X size={12}/></button>)}</div> : <p className="client-muted">No tags yet.</p>}<form className="client-tag-form" onSubmit={addTag}><input value={tagDraft} onChange={event => setTagDraft(event.target.value)} maxLength={24} placeholder="Add a tag..." aria-label="New lead tag"/><button type="submit" disabled={tags.length >= 12}><Plus size={13}/> Add tag</button></form></section>
+        <section className="client-drawer-section"><div className="client-section-heading"><h3>Tags</h3><span>{tags.length}/12</span></div>{tags.length ? <div className="client-tag-list">{tags.map(tag => <button key={tag} onClick={() => { setTags(current => current.filter(item => item !== tag)); showWorkspaceToast('Lead tag removed.') }}>{tag}<X size={12}/></button>)}</div> : <p className="client-muted">No tags yet.</p>}<form className="client-tag-form" onSubmit={addTag}><input value={tagDraft} onChange={event => setTagDraft(event.target.value)} maxLength={24} placeholder="Add a tag..." aria-label="New lead tag"/><button type="submit" disabled={tags.length >= 12}><Plus size={13}/> Add tag</button></form></section>
         <section className="client-drawer-section"><div className="client-section-heading"><h3>Recent activity</h3><button onClick={() => setTab('Activity')}>View all <span>→</span></button></div><div className="client-drawer-empty activity-empty">No activity has been recorded for this lead.</div></section>
       </>}
       {tab === 'Activity' && <section className="client-drawer-section"><div className="client-section-heading"><h3>Activity</h3><span>Recent updates</span></div><div className="client-drawer-empty">No activity has been recorded for this lead yet.</div></section>}
-      {tab === 'Notes' && <section className="client-drawer-section"><h3>Notes</h3><form className="client-note-form" onSubmit={saveNote}><textarea value={noteDraft} onChange={event => setNoteDraft(event.target.value)} placeholder="Write a note about this lead..." rows={4}/><button type="submit" disabled={!noteDraft.trim()}>Save note</button></form>{notes.length ? <div className="client-notes-list">{notes.map((note, index) => <article key={`${index}-${note}`}><span>Ber · Just now</span><p>{note}</p></article>)}</div> : <div className="client-drawer-empty">No notes yet.</div>}</section>}
+      {tab === 'Notes' && <section className="client-drawer-section"><h3>Notes</h3><form className="client-note-form" onSubmit={saveNote}><textarea value={noteDraft} onChange={event => setNoteDraft(event.target.value)} placeholder="Write a note about this lead..." rows={4}/><button type="submit" disabled={!noteDraft.trim()}>Save note</button></form>{notes.length ? <div className="client-notes-list">{notes.map((note, index) => <article key={`${index}-${note}`}><span>Workspace member · Just now</span><p>{note}</p></article>)}</div> : <div className="client-drawer-empty">No notes yet.</div>}</section>}
     </div>
     <footer className="lead-drawer-footer"><button className="lead-edit-button" onClick={onEdit}><Tag size={14}/>Edit lead</button><button className="lead-open-project" onClick={() => onFullWorkflow(lead)}>Open full workflow <ArrowRight size={14}/></button></footer>
   </aside></div>

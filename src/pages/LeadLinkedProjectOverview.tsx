@@ -4,6 +4,7 @@ import type { LeadDirectoryRow } from './LeadsPage'
 import type { ProjectDirectoryRow } from './ProjectsPage'
 import { projectTaskRows, type ProjectTaskRecord } from './ProjectTasksPage'
 import { CustomSelect } from '../components/CustomControls'
+import { showWorkspaceToast } from '../lib/workspaceToast'
 
 export default function LeadLinkedProjectOverview({ lead, project, statusOverride, onStatusChange, onViewTasks, onOpenProject, onOpenTask }: {
   lead: LeadDirectoryRow
@@ -68,7 +69,7 @@ function EditableProjectMetric({ icon: Icon, label, value, detail, tone, editor,
     <div className={`lead-project-metric-icon ${tone}`}><Icon size={18}/></div>
     <div className="lead-project-metric-content">
       <div className="lead-project-metric-label">{label}</div>
-      {editing ? <form className="lead-project-metric-editor" onSubmit={event => { event.preventDefault(); onSave(draft); setEditing(false) }}>
+      {editing ? <form className="lead-project-metric-editor" onSubmit={event => { event.preventDefault(); onSave(draft); setEditing(false); showWorkspaceToast(`${label} updated.`) }}>
         {editor === 'status' ? <CustomSelect ariaLabel={`Edit ${label}`} value={draft} options={['Planned', 'In progress', 'Completed', 'On hold', 'Cancelled']} onChange={setDraft}/> : <input aria-label={`Edit ${label}`} autoFocus type="number" min="0" step="0.01" required value={draft} onChange={event => setDraft(event.target.value)}/>} 
         <button type="submit" aria-label={`Save ${label}`}><Check size={14}/></button><button type="button" aria-label={`Cancel editing ${label}`} onClick={() => setEditing(false)}><X size={14}/></button>
       </form> : <><div className="lead-project-metric-value">{value}</div><div className="lead-project-metric-detail">{detail}</div></>}
@@ -100,12 +101,13 @@ export function LeadProjectImages() {
       imageUrls.current.push(url)
       return { name: file.name, url }
     })])
+    showWorkspaceToast(selected.length === 1 ? 'Project image added.' : `${selected.length} project images added.`)
   }
 
   return <section className="task-detail-card lead-project-images">
     <div className="lead-project-card-heading"><div><h3 className="lead-images-title"><Camera size={15}/>Images</h3><p>Project images stay on this page for the current session.</p></div><span>{images.length} selected</span></div>
     <div className="lead-project-image-picker"><span><ImagePlus size={16}/></span><div><b>Choose project images</b><small>JPG, PNG, or WebP · up to 5 MB each</small></div><input aria-label="Choose project images" type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={event => { addImages(event.currentTarget.files); event.currentTarget.value = '' }}/><button type="button" onClick={event => event.currentTarget.parentElement?.querySelector('input')?.click()}>+ Choose images</button></div>
     {imageError && <p className="lead-project-image-error">{imageError}</p>}
-    {images.length ? <div className="lead-project-image-list">{images.map((image, index) => <figure key={`${image.name}-${index}`}><img src={image.url} alt={image.name}/><figcaption><span>{image.name}</span><button onClick={() => { URL.revokeObjectURL(image.url); imageUrls.current = imageUrls.current.filter(url => url !== image.url); setImages(current => current.filter((_, itemIndex) => itemIndex !== index)) }} aria-label={`Remove ${image.name}`}>×</button></figcaption></figure>)}</div> : <p className="lead-project-no-images">No project images attached.</p>}
+    {images.length ? <div className="lead-project-image-list">{images.map((image, index) => <figure key={`${image.name}-${index}`}><img src={image.url} alt={image.name}/><figcaption><span>{image.name}</span><button onClick={() => { URL.revokeObjectURL(image.url); imageUrls.current = imageUrls.current.filter(url => url !== image.url); setImages(current => current.filter((_, itemIndex) => itemIndex !== index)); showWorkspaceToast('Project image removed.') }} aria-label={`Remove ${image.name}`}>×</button></figcaption></figure>)}</div> : <p className="lead-project-no-images">No project images attached.</p>}
   </section>
 }

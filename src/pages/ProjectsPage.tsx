@@ -3,15 +3,14 @@ import { Activity, ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, Chev
 import { DirectoryHeader, MetricsStrip, DirectoryTabs, RecordActionButtons, RecordActionDialog, type DirectoryAction } from '../components/DirectoryShared'
 import { CustomSelect } from '../components/CustomControls'
 import { projectTaskRows, type ProjectTaskRecord } from './ProjectTasksPage'
+import ProjectTaskDetailPage from './ProjectTaskDetailPage'
+import BoardPage from './BoardPage'
+import { useDatabaseCollection } from '../lib/database'
 
 export type ProjectDirectoryRow = { name: string; client: string; initials: string; type: string; start: string; target: string; value: string; status: string; tone: string }
 
 
-export const projectDirectory: ProjectDirectoryRow[] = [
-  { name: 'Jollibee pos system', client: 'Jollibee', initials: 'JO', type: 'Website', start: 'Nov 30, 2026', target: 'Dec 1, 2026', value: 'PHP 2,000.00', status: 'Planned', tone: 'blue' },
-  { name: 'VioTrack Monitoring System Website', client: 'VioTrack', initials: 'VI', type: 'Website', start: 'Nov 2, 2026', target: 'Dec 1, 2026', value: 'PHP 3,000.00', status: 'Completed', tone: 'green' },
-  { name: 'Company ABC Website', client: 'Company ABC', initials: 'CA', type: 'Website', start: 'Oct 31, 2026', target: 'Nov 5, 2026', value: 'USD 100.00', status: 'In progress', tone: 'green' },
-]
+export const projectDirectory: ProjectDirectoryRow[] = []
 
 const dateInputValue = (value: string) => {
   const date = new Date(value)
@@ -24,18 +23,18 @@ const dateDisplayValue = (value: string) => {
 }
 
 
-export default function ProjectsPage({ onAdd, initialProjectName, additionalProjects = [], statusOverrides = {} }: { onAdd: () => void; initialProjectName?: string; additionalProjects?: ProjectDirectoryRow[]; statusOverrides?: Record<string, string> }) {
+export default function ProjectsPage({ onAdd, onOpenTask, onOpenFullProject, onBackFromFullProject, initialProjectName, initialFullProjectName, additionalProjects = [], statusOverrides = {} }: { onAdd: () => void; onOpenTask?: (task: ProjectTaskRecord) => void; onOpenFullProject?: (projectName: string) => void; onBackFromFullProject?: () => void; initialProjectName?: string; initialFullProjectName?: string; additionalProjects?: ProjectDirectoryRow[]; statusOverrides?: Record<string, string> }) {
   const [active, setActive] = useState('all')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('Recently updated')
-  const [projectOverrides, setProjectOverrides] = useState<Record<string, Partial<ProjectDirectoryRow>>>({})
-  const [deletedProjects, setDeletedProjects] = useState<string[]>([])
+  const [projectOverrides, setProjectOverrides] = useDatabaseCollection<Record<string, Partial<ProjectDirectoryRow>>>('projectOverrides', {})
+  const [deletedProjects, setDeletedProjects] = useDatabaseCollection<string[]>('deletedProjects', [])
   const [action, setAction] = useState<DirectoryAction | null>(null)
   const allProjects = [...projectDirectory.filter(project => !additionalProjects.some(extra => extra.name === project.name)), ...additionalProjects]
     .map(project => ({ ...project, ...projectOverrides[project.name], status: statusOverrides[project.name] ?? projectOverrides[project.name]?.status ?? project.status }))
     .filter(project => !deletedProjects.includes(project.name))
   const [selectedProject, setSelectedProject] = useState<ProjectDirectoryRow | null>(() => allProjects.find(project => project.name === initialProjectName) ?? null)
-  const [fullProject, setFullProject] = useState<ProjectDirectoryRow | null>(null)
+  const [fullProject, setFullProject] = useState<ProjectDirectoryRow | null>(() => allProjects.find(project => project.name === initialFullProjectName) ?? null)
   const openAction = (project: ProjectDirectoryRow, mode: 'edit' | 'delete') => setAction({
     mode, name: project.name,
     fields: [['Client', project.client], ['Project type', project.type], ['Start date', project.start], ['Target date', project.target], ['Agreed value', project.value], ['Status', project.status]],
@@ -59,6 +58,7 @@ export default function ProjectsPage({ onAdd, initialProjectName, additionalProj
   const tabs = [{ label: 'All projects', value: 'all', count: allProjects.length }, { label: 'Planned', value: 'Planned', count: countStatus('Planned') }, { label: 'In progress', value: 'In progress', count: countStatus('In progress') }, { label: 'Completed', value: 'Completed', count: countStatus('Completed') }, { label: 'On hold', value: 'On hold', count: countStatus('On hold') }, { label: 'Cancelled', value: 'Cancelled', count: countStatus('Cancelled') }]
   const filtered = allProjects.filter(row => (active === 'all' || row.status === active) && `${row.name} ${row.client} ${row.type}`.toLowerCase().includes(search.toLowerCase()))
   const sorted = sort === 'Name A–Z' ? [...filtered].sort((a, b) => a.name.localeCompare(b.name)) : sort === 'Target date' ? [...filtered].sort((a, b) => a.target.localeCompare(b.target)) : filtered
+  if (fullProject) return <ProjectFullRecord project={fullProject} onBack={() => { setFullProject(null); onBackFromFullProject?.() }} onOpenTask={onOpenTask}/>
   return <div className="directory-page">
     <DirectoryHeader section="DELIVERY WORKSPACE" title="Projects" description="Manage client projects from accepted proposal through delivery." action="New project" onAction={onAdd}/>
     <MetricsStrip metrics={[
@@ -75,8 +75,7 @@ export default function ProjectsPage({ onAdd, initialProjectName, additionalProj
       <div className="directory-panel-foot"><span>1–{sorted.length} of {sorted.length} projects</span><span className="pagination"><button disabled><ChevronLeft size={16}/></button>Page 1 of 1<button disabled><ChevronRight size={16}/></button></span><label>Rows <CustomSelect className="rows-select" value="10 per page" options={['10 per page', '25 per page']}/></label></div>
     </section>
     {action && <RecordActionDialog key={`${action.mode}-${action.name}`} action={action} onClose={() => setAction(null)}/>}
-    {selectedProject && <ProjectDetailDrawer key={selectedProject.name} project={selectedProject} onClose={() => setSelectedProject(null)} onEdit={() => { setSelectedProject(null); openAction(selectedProject, 'edit') }} onDelete={() => { setSelectedProject(null); openAction(selectedProject, 'delete') }} onOpenFullProject={() => { setFullProject(selectedProject); setSelectedProject(null) }}/>}
-    {fullProject && <ProjectFullRecord project={fullProject} onBack={() => setFullProject(null)}/>}
+    {selectedProject && <ProjectDetailDrawer key={selectedProject.name} project={selectedProject} onClose={() => setSelectedProject(null)} onEdit={() => { setSelectedProject(null); openAction(selectedProject, 'edit') }} onDelete={() => { setSelectedProject(null); openAction(selectedProject, 'delete') }} onOpenFullProject={() => { setFullProject(selectedProject); setSelectedProject(null); onOpenFullProject?.(selectedProject.name) }}/>}
   </div>
 }
 
@@ -84,7 +83,8 @@ type ProjectDrawerTab = 'Overview' | 'Tasks' | 'Payments'
 
 function ProjectDetailDrawer({ project, onClose, onEdit, onDelete, onOpenFullProject }: { project: ProjectDirectoryRow; onClose: () => void; onEdit: () => void; onDelete: () => void; onOpenFullProject: () => void }) {
   const [tab, setTab] = useState<ProjectDrawerTab>('Overview')
-  const relatedTasks = projectTaskRows.filter(task => task.project === project.name)
+  const [allTasks] = useDatabaseCollection('tasks', projectTaskRows)
+  const relatedTasks = allTasks.filter(task => task.project === project.name)
   const tabs: ProjectDrawerTab[] = ['Overview', 'Tasks', 'Payments']
   return <div className="client-drawer-backdrop" onClick={onClose}><aside className="client-detail-drawer" role="dialog" aria-modal="true" aria-label={`${project.name} project details`} onClick={event => event.stopPropagation()}>
     <header className="client-drawer-header"><span className={`directory-avatar ${project.tone}`}>{project.initials}</span><div className="client-drawer-title"><h2>{project.name}</h2><span>{project.client}</span></div><span className={`project-record-status ${project.status.toLowerCase().replace(/ /g, '-')}`}>{project.status}</span><button className="client-drawer-close" aria-label="Close project details" onClick={onClose}><X size={17}/></button></header>
@@ -101,23 +101,28 @@ function ProjectDetailDrawer({ project, onClose, onEdit, onDelete, onOpenFullPro
   </aside></div>
 }
 
-function ProjectFullRecord({ project, onBack }: { project: ProjectDirectoryRow; onBack: () => void }) {
-  const relatedTasks = projectTaskRows.filter(task => task.project === project.name)
+function ProjectFullRecord({ project, onBack, onOpenTask }: { project: ProjectDirectoryRow; onBack: () => void; onOpenTask?: (task: ProjectTaskRecord) => void }) {
+  const [allTasks] = useDatabaseCollection('tasks', projectTaskRows)
+  const relatedTasks = allTasks.filter(task => task.project === project.name)
+  const primaryTask = relatedTasks[0]
+  if (primaryTask) return <ProjectTaskDetailPage task={primaryTask} onBack={onBack} onOpenProject={() => {}} hideOpenProject projectContext projectClient={project.client}/>
   return <div className="directory-page task-detail-page project-full-record">
     <button className="task-detail-back" onClick={onBack}><ArrowLeft size={15}/> Back to projects</button>
     <header className="task-detail-heading"><div><span className="directory-eyebrow">DELIVERY WORKSPACE / PROJECTS</span><h1>{project.name}</h1><p>{project.client} · {project.type}</p></div><span className={`project-task-status ${project.status.toLowerCase().replace(/ /g, '-')}`}>{project.status}</span></header>
     <div className="task-detail-grid">
       <div className="task-detail-main">
         <section className="task-detail-card"><div className="task-detail-card-heading"><span className="task-detail-icon orange"><Layers3 size={17}/></span><div><h2>Project information</h2><p>Client and delivery details</p></div></div><div className="task-detail-properties"><div><div><small>Client</small><b>{project.client}</b></div></div><div><div><small>Project type</small><b>{project.type}</b></div></div><div><div><small>Start date</small><b>{project.start}</b></div></div><div><div><small>Target date</small><b>{project.target}</b></div></div><div><div><small>Agreed value</small><b>{project.value}</b></div></div><div><div><small>Status</small><b>{project.status}</b></div></div></div><p className="project-payment-help">Payment records show receipts; delivery progress is tracked separately by project status and tasks.</p></section>
-        <section className="task-detail-card"><div className="task-detail-card-heading"><span className="task-detail-icon blue"><ClipboardList size={17}/></span><div><h2>Project tasks</h2><p>{relatedTasks.length} linked {relatedTasks.length === 1 ? 'task' : 'tasks'}</p></div></div>{relatedTasks.length ? <div className="project-drawer-task-list">{relatedTasks.map(task => <ProjectTaskMiniCard key={task.title} task={task}/>)}</div> : <div className="client-drawer-empty">No tasks are linked to this project yet.</div>}</section>
+        <section className="task-detail-card"><div className="task-detail-card-heading"><span className="task-detail-icon blue"><ClipboardList size={17}/></span><div><h2>Project tasks</h2><p>No linked tasks</p></div></div><div className="client-drawer-empty">No tasks are linked to this project yet.</div></section>
       </div>
       <aside className="task-detail-side"><section className="task-detail-card"><div className="task-detail-card-heading"><span className="task-detail-icon green"><CreditCard size={17}/></span><div><h2>Payments</h2><p>Recorded receipts</p></div></div><div className="client-drawer-empty project-payment-empty"><span><CreditCard size={18}/></span><b>No payment records yet</b><p>Recorded receipts will appear here.</p></div></section></aside>
     </div>
+    <div className="task-detail-board-section"><BoardPage projectContext projectName={project.name} projectClient={project.client}/></div>
   </div>
 }
 
-function ProjectTaskMiniCard({ task }: { task: ProjectTaskRecord }) {
-  return <article className="project-task-mini-card"><div className="project-task-mini-heading"><b>{task.title}</b><span className={`project-task-status ${task.status.toLowerCase().replace(/ /g, '-')}`}>{task.status}</span></div><div className="project-task-mini-meta"><span><CalendarDays size={12}/>{task.due}</span><span className={`priority ${task.priority.toLowerCase()}`}>{task.priority}</span></div>{task.overdue && <small className="overdue-note">Overdue</small>}</article>
+function ProjectTaskMiniCard({ task, onOpen }: { task: ProjectTaskRecord; onOpen?: () => void }) {
+  const content = <><div className="project-task-mini-heading"><b>{task.title}</b><span className={`project-task-status ${task.status.toLowerCase().replace(/ /g, '-')}`}>{task.status}</span></div><div className="project-task-mini-meta"><span><CalendarDays size={12}/>{task.due}</span><span className={`priority ${task.priority.toLowerCase()}`}>{task.priority}</span></div>{task.overdue && <small className="overdue-note">Overdue</small>}</>
+  return onOpen ? <button type="button" className="project-task-mini-card is-clickable" onClick={onOpen}>{content}</button> : <article className="project-task-mini-card">{content}</article>
 }
 
 
