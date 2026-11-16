@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AddNewModal, Sidebar, Topbar, type CreateRecordType, type GlobalSearchItem } from './components/AppShell'
+import { AddNewModal, Sidebar, Topbar, type CreateRecordType, type GlobalSearchItem, type WorkspaceNotification } from './components/AppShell'
 import BoardPage from './pages/BoardPage'
 import CalendarPage from './pages/CalendarPage'
 import ClientsPage, { clientDirectory } from './pages/ClientsPage'
@@ -44,6 +44,37 @@ function TimeoutScreen({ now, sessionStartedAt, lockedAt, onResume, onSignOut }:
   </section></main>
 }
 
+function buildWorkspaceNotifications(leads: LeadDirectoryRow[], tasks: ProjectTaskRecord[]): WorkspaceNotification[] {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const dayMs = 24 * 60 * 60 * 1000
+  const taskItems = tasks.flatMap(task => {
+    if (task.status === 'Completed') return []
+    const due = new Date(task.due)
+    if (Number.isNaN(due.getTime())) return []
+    due.setHours(0, 0, 0, 0)
+    const daysUntilDue = Math.floor((due.getTime() - today.getTime()) / dayMs)
+    if (daysUntilDue > 7) return []
+    const date = task.due
+    return [{
+      id: `task:${task.title}:${task.project}:${task.due}`,
+      title: daysUntilDue < 0 ? 'Task overdue' : daysUntilDue === 0 ? 'Task due today' : 'Task due soon',
+      detail: `${task.title} · ${task.project}`,
+      page: 'Project tasks',
+      date,
+      sortTime: due.getTime(),
+    }]
+  }).sort((a, b) => a.sortTime - b.sortTime).slice(0, 5)
+  const leadItems = leads.slice(-5).reverse().map(lead => ({
+    id: `lead:${lead.name}:${lead.date}`,
+    title: 'New lead added',
+    detail: `${lead.name} · ${lead.source || 'Unspecified source'}`,
+    page: 'Leads',
+    date: lead.date,
+  }))
+  return [...taskItems, ...leadItems].slice(0, 8)
+}
+
 export default function App() {
   return <WorkspaceAuthGate><WorkspaceApp/></WorkspaceAuthGate>
 }
@@ -57,7 +88,7 @@ function WorkspaceApp() {
   const [workspaceToast, setWorkspaceToast] = useState('')
   const [session, setSession] = useState<SupabaseSession | null>(null)
   const [profilePhotos] = useDatabaseCollection<Record<string, string>>('profilePhotos', emptyProfilePhotos)
-  const [accountSettings] = useDatabaseCollection<Record<string, { name?: string }>>('accountSettings', {})
+  const [accountSettings, setAccountSettings] = useDatabaseCollection<Record<string, { name?: string; readNotificationIds?: string[]; taskReminders?: boolean }>>('accountSettings', {})
   const workspaceToastTimer = useRef<number | null>(null)
   const [timedOutAt, setTimedOutAt] = useState<number | null>(null)
   const [sessionStartedAt, setSessionStartedAt] = useState(() => Date.now())
@@ -74,6 +105,13 @@ function WorkspaceApp() {
   const [savedLeads] = useDatabaseCollection('leads', leadDirectory)
   const [savedClients] = useDatabaseCollection('clients', clientDirectory)
   const [savedTasks] = useDatabaseCollection('tasks', projectTaskRows)
+  const notificationItems = buildWorkspaceNotifications(savedLeads, savedTasks).filter(item => !item.id.startsWith('task:') || accountSettings[session?.user.id ?? '']?.taskReminders !== false)
+  const currentUserId = session?.user.id ?? ''
+  const readNotificationIds = accountSettings[currentUserId]?.readNotificationIds ?? []
+  const markNotificationsRead = (ids: string[]) => {
+    if (!currentUserId || !ids.length) return
+    setAccountSettings(current => ({ ...current, [currentUserId]: { ...current[currentUserId], readNotificationIds: [...new Set([...(current[currentUserId]?.readNotificationIds ?? []), ...ids])] } }))
+  }
   const database = useDatabaseStatus()
   useEffect(() => {
     const clockInterval = window.setInterval(() => setClockNow(Date.now()), 1000)
@@ -207,7 +245,7 @@ function WorkspaceApp() {
   return <div className="app-shell">
     <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} active={activePage} onNavigate={onNavigate} onLogout={() => setShowLogoutConfirm(true)} />
     <main className="main-area">
-      <Topbar onAdd={onAdd} onToggle={() => setCollapsed(!collapsed)} collapsed={collapsed} searchItems={searchItems} onSearchSelect={onSearchSelect} onNavigate={onNavigate} onTimeout={() => { setTimedOutAt(Date.now()); setIsTimedOut(true) }} onLogout={() => setShowLogoutConfirm(true)} accountName={accountSettings[session?.user.id ?? '']?.name?.trim() || String((session?.user.user_metadata as { full_name?: unknown; name?: unknown } | undefined)?.full_name ?? (session?.user.user_metadata as { name?: unknown } | undefined)?.name ?? session?.user.email?.split('@')[0] ?? 'Workspace member')} accountEmail={session?.user.email ?? ''} profilePhotoUrl={profilePhotos[session?.user.id ?? ''] ?? null} showAdd={activePage !== 'Tasks / Deals'} />
+      <Topbar onAdd={onAdd} onToggle={() => setCollapsed(!collapsed)} collapsed={collapsed} searchItems={searchItems} onSearchSelect={onSearchSelect} onNavigate={onNavigate} onTimeout={() => { setTimedOutAt(Date.now()); setIsTimedOut(true) }} onLogout={() => setShowLogoutConfirm(true)} accountName={accountSettings[session?.user.id ?? '']?.name?.trim() || String((session?.user.user_metadata as { full_name?: unknown; name?: unknown } | undefined)?.full_name ?? (session?.user.user_metadata as { name?: unknown } | undefined)?.name ?? session?.user.email?.split('@')[0] ?? 'Workspace member')} accountEmail={session?.user.email ?? ''} profilePhotoUrl={profilePhotos[session?.user.id ?? ''] ?? null} notifications={notificationItems} readNotificationIds={readNotificationIds} onMarkNotificationsRead={markNotificationsRead} showAdd={activePage !== 'Tasks / Deals'} />
       {database.status === 'error' && <div className="database-error-banner" role="alert">Supabase connection issue. Changes may not be saved. {database.error}</div>}
       {page}
     </main>

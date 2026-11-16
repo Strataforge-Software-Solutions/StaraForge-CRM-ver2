@@ -82,6 +82,7 @@ async function getMembers(projectUrl: string, secretKey: string, workspaceId: st
     const user = usersById.get(member.user_id)
     const confirmed = Boolean(user?.email_confirmed_at ?? user?.confirmed_at)
     return {
+      userId: member.user_id,
       email: member.email,
       displayName: member.display_name || String(user?.user_metadata?.name ?? member.email.split('@')[0]),
       role: member.role,

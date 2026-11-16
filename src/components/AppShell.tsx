@@ -6,6 +6,7 @@ import { prepareProfilePhoto } from '../lib/profilePhoto'
 
 export type GlobalSearchItem = { kind: 'Lead' | 'Client' | 'Project' | 'Task' | 'Page'; title: string; subtitle: string; page: string; key: string }
 export type CreateRecordType = 'Lead' | 'Client' | 'Project' | 'Task'
+export type WorkspaceNotification = { id: string; title: string; detail: string; page: string; date: string }
 
 const navigation = [
   { title: 'WORKSPACE', items: [
@@ -50,7 +51,7 @@ export function Sidebar({ collapsed, onToggle, active, onNavigate, onLogout }: {
   </aside>
 }
 
-export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect, onNavigate, onTimeout, onLogout, accountName, accountEmail, profilePhotoUrl, showAdd = true }: { onAdd: (type?: CreateRecordType) => void; onToggle: () => void; collapsed: boolean; searchItems: GlobalSearchItem[]; onSearchSelect: (item: GlobalSearchItem) => void; onNavigate: (page: string) => void; onTimeout: () => void; onLogout: () => void; accountName: string; accountEmail: string; profilePhotoUrl: string | null; showAdd?: boolean }) {
+export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect, onNavigate, onTimeout, onLogout, accountName, accountEmail, profilePhotoUrl, notifications, readNotificationIds, onMarkNotificationsRead, showAdd = true }: { onAdd: (type?: CreateRecordType) => void; onToggle: () => void; collapsed: boolean; searchItems: GlobalSearchItem[]; onSearchSelect: (item: GlobalSearchItem) => void; onNavigate: (page: string) => void; onTimeout: () => void; onLogout: () => void; accountName: string; accountEmail: string; profilePhotoUrl: string | null; notifications: WorkspaceNotification[]; readNotificationIds: string[]; onMarkNotificationsRead: (ids: string[]) => void; showAdd?: boolean }) {
   const [query, setQuery] = useState('')
   const [notice, setNotice] = useState(false)
   const [open, setOpen] = useState(false)
@@ -59,6 +60,7 @@ export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect
   const [activeIndex, setActiveIndex] = useState(0)
   const searchRef = useRef<HTMLFormElement>(null)
   const accountMenuRef = useRef<HTMLDivElement>(null)
+  const notificationRef = useRef<HTMLDivElement>(null)
   const filtered = query.trim() ? searchItems.filter(item => `${item.title} ${item.subtitle} ${item.kind}`.toLowerCase().includes(query.trim().toLowerCase())) : []
   const defaultPages = searchItems.filter(item => item.kind === 'Page').slice(0, 6)
   const groups = query.trim()
@@ -67,13 +69,15 @@ export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect
   const results = groups.flatMap(group => group.items)
   const accountInitial = accountName.trim().charAt(0).toUpperCase() || '?'
   const showPhoto = Boolean(profilePhotoUrl && !photoFailed)
+  const unreadNotificationIds = notifications.filter(item => !readNotificationIds.includes(item.id)).map(item => item.id)
   useEffect(() => { setPhotoFailed(false) }, [profilePhotoUrl])
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       if (!searchRef.current?.contains(event.target as Node)) setOpen(false)
       if (!accountMenuRef.current?.contains(event.target as Node)) setAccountOpen(false)
+      if (!notificationRef.current?.contains(event.target as Node)) setNotice(false)
     }
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setAccountOpen(false) }
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') { setAccountOpen(false); setNotice(false) } }
     document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
     return () => { document.removeEventListener('pointerdown', onPointerDown); document.removeEventListener('keydown', onKeyDown) }
@@ -118,7 +122,17 @@ export function Topbar({ onAdd, onToggle, collapsed, searchItems, onSearchSelect
     </form>
     <div className="top-actions">
       {showAdd && <button className="add-button" onClick={() => onAdd()}><Plus size={14} /> <span>Add New</span></button>}
-      <button className={`icon-button notification ${notice ? 'noticed' : ''}`} onClick={() => setNotice(!notice)} aria-label="Notifications"><Bell size={16} /><i /></button>
+      <div className="notification-anchor" ref={notificationRef}>
+        <button type="button" className={`icon-button notification ${notice ? 'noticed' : ''}`} onClick={() => setNotice(value => !value)} aria-label={`Notifications${unreadNotificationIds.length ? `, ${unreadNotificationIds.length} unread` : ''}`} aria-expanded={notice} aria-controls="workspace-notifications"><Bell size={16} />{unreadNotificationIds.length > 0 && <span className="notification-count">{unreadNotificationIds.length > 9 ? '9+' : unreadNotificationIds.length}</span>}</button>
+        {notice && <section className="notification-panel" id="workspace-notifications" aria-label="Notifications">
+          <header><div><b>Notifications</b><small>{unreadNotificationIds.length ? `${unreadNotificationIds.length} unread` : 'Your workspace updates'}</small></div><button type="button" onClick={() => onMarkNotificationsRead(unreadNotificationIds)} disabled={!unreadNotificationIds.length}>Mark all read</button></header>
+          {notifications.length ? <ul>{notifications.map(item => {
+            const unread = !readNotificationIds.includes(item.id)
+            return <li key={item.id}><button type="button" className={unread ? 'unread' : ''} onClick={() => { if (unread) onMarkNotificationsRead([item.id]); setNotice(false); onNavigate(item.page) }}><span className="notification-item-dot" aria-hidden="true"/><span><b>{item.title}</b><small>{item.detail}</small><time>{item.date}</time></span></button></li>
+          })}</ul> : <div className="notification-empty"><Bell size={18}/><b>You’re all caught up</b><span>New leads and task reminders will appear here.</span></div>}
+          <footer>Updates from your workspace</footer>
+        </section>}
+      </div>
       <div className="account-menu-anchor" ref={accountMenuRef}>
         <button className={`avatar account-avatar ${showPhoto ? 'has-photo' : ''} ${accountOpen ? 'open' : ''}`} title={`Account menu for ${accountName}`} aria-label={`Open account menu for ${accountName}`} aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen(value => !value)}>{showPhoto ? <img src={profilePhotoUrl ?? ''} alt="" onError={() => setPhotoFailed(true)}/> : <span>{accountInitial}</span>}</button>
         {accountOpen && <div className="account-menu" role="menu" aria-label="Account menu">

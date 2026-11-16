@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Check, CircleAlert, LoaderCircle, MailPlus, ShieldCheck, UserPlus, Users, X } from 'lucide-react'
 import { DirectoryHeader } from '../components/DirectoryShared'
+import { CustomSelect } from '../components/CustomControls'
 import { getCurrentDatabaseWorkspaceId, useDatabaseCollection } from '../lib/database'
 import { getCurrentSession, getWorkspaceMembership } from '../lib/supabase'
+import { emptyProfilePhotos } from '../lib/profilePhoto'
 
 type WorkspaceRole = 'owner' | 'admin' | 'member'
-type WorkspaceMember = { email: string; displayName: string; role: WorkspaceRole; status: 'active' | 'pending'; createdAt: string }
+type WorkspaceMember = { userId?: string; email: string; displayName: string; role: WorkspaceRole; status: 'active' | 'pending'; createdAt: string }
 type InviteResult = { ok?: boolean; inviteSent?: boolean; existingAccount?: boolean; confirmationResent?: boolean; error?: string }
 
 async function apiRequest(path: string, session: { access_token: string }, init: RequestInit = {}) {
@@ -26,6 +28,7 @@ function displayDate(value: string) {
 
 export default function AccessPage() {
   const [accountSettings] = useDatabaseCollection<Record<string, { name?: string }>>('accountSettings', {})
+  const [profilePhotos] = useDatabaseCollection<Record<string, string>>('profilePhotos', emptyProfilePhotos)
   const [members, setMembers] = useState<WorkspaceMember[]>([])
   const [loading, setLoading] = useState(true)
   const [canManage, setCanManage] = useState(false)
@@ -54,6 +57,7 @@ export default function AccessPage() {
       if (!membership) throw new Error('Your account is not connected to a workspace.')
       const metadata = session.user.user_metadata as { full_name?: unknown; name?: unknown } | undefined
       const ownMember: WorkspaceMember = {
+        userId: membership.user_id,
         email: membership.email || session.user.email || '',
         displayName: accountSettings[session.user.id]?.name?.trim() || String(metadata?.full_name ?? metadata?.name ?? membership.display_name ?? session.user.email?.split('@')[0] ?? 'Workspace member'),
         role: membership.role as WorkspaceRole,
@@ -126,7 +130,7 @@ export default function AccessPage() {
       {!loading && rosterNotice && <div className="admin-note access-admin-note" role="status"><ShieldCheck size={18}/><div><b>Account access confirmed</b><p>{rosterNotice}</p></div></div>}
       {!loading && canManage && !pageError && members.length === 0 && <div className="admin-empty"><Users size={22}/><b>No workspace members yet</b><span>Invite a teammate to give them secure access to this workspace.</span></div>}
       {!loading && canManage && !pageError && members.length > 0 && <div className="admin-table-scroll access-members-scroll"><table className="admin-table"><thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Added</th></tr></thead><tbody>
-        {members.map(member => <tr key={member.email}><td><div className="admin-member"><span className="admin-avatar">{member.displayName.slice(0, 1).toUpperCase() || 'U'}</span><span><b>{member.displayName}</b><small>{member.email}</small></span></div></td><td><span className="admin-role"><ShieldCheck size={14}/>{member.role[0].toUpperCase() + member.role.slice(1)}</span></td><td><span className={`admin-status${member.status === 'pending' ? ' pending' : ''}`}><i/>{member.status === 'pending' ? 'Invitation pending' : 'Active'}</span></td><td>{displayDate(member.createdAt)}</td></tr>)}
+        {members.map(member => <tr key={member.email}><td><div className="admin-member"><span className="admin-avatar">{member.userId && profilePhotos[member.userId] ? <img src={profilePhotos[member.userId]} alt=""/> : member.displayName.slice(0, 1).toUpperCase() || 'U'}</span><span><b>{member.displayName}</b><small>{member.email}</small></span></div></td><td><span className="admin-role"><ShieldCheck size={14}/>{member.role[0].toUpperCase() + member.role.slice(1)}</span></td><td><span className={`admin-status${member.status === 'pending' ? ' pending' : ''}`}><i/>{member.status === 'pending' ? 'Invitation pending' : 'Active'}</span></td><td>{displayDate(member.createdAt)}</td></tr>)}
       </tbody></table></div>}
       <div className="admin-panel-foot"><span>New invitees set a password and authenticator before opening workspace data.</span><span>Only owners and admins can invite.</span></div>
     </section>
@@ -136,7 +140,7 @@ export default function AccessPage() {
         <header><div><span className="directory-eyebrow">WORKSPACE ACCESS</span><h2 id="invite-title">{reviewing ? 'Review invitation' : 'Invite a teammate'}</h2><p>{reviewing ? 'Check the email and access level before continuing.' : 'Choose an email address and the access they need.'}</p></div><button className="admin-modal-close" type="button" aria-label="Close invitation" onClick={closeInvite}><X size={16}/></button></header>
         {!reviewing ? <form onSubmit={handleReview}>
           <label className="admin-form-field">Email address<input autoFocus type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} placeholder="teammate@company.com"/></label>
-          <label className="admin-form-field">Workspace role<select value={role} onChange={event => setRole(event.target.value as 'member' | 'admin')}><option value="member">Member</option><option value="admin">Admin</option></select></label>
+          <label className="admin-form-field">Workspace role<CustomSelect ariaLabel="Workspace role" className="admin-role-select" value={role} options={[{ label: 'Member', value: 'member' }, { label: 'Admin', value: 'admin' }]} onChange={value => setRole(value as 'member' | 'admin')}/></label>
           <p className="invite-behavior-note"><MailPlus size={15}/> New accounts receive an email invitation. Existing accounts are added immediately and won’t receive a new invite email.</p>
           <footer><button className="admin-cancel" type="button" onClick={closeInvite}>Cancel</button><button className="admin-submit" type="submit"><UserPlus size={14}/>Review invite</button></footer>
         </form> : <>
