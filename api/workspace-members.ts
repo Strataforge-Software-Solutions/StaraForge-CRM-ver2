@@ -2,12 +2,13 @@ type WorkspaceRole = 'owner' | 'admin' | 'member'
 type AuthUser = { id: string; email?: string; email_confirmed_at?: string | null; confirmed_at?: string | null; last_sign_in_at?: string | null; user_metadata?: Record<string, unknown> }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } })
+const env = (name: string) => (globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }).process?.env?.[name] ?? ''
 
 function environment() {
   return {
-    projectUrl: (process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, ''),
-    publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? '',
-    secretKey: process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+    projectUrl: (env('SUPABASE_URL') || env('VITE_SUPABASE_URL')).replace(/\/+$/, ''),
+    publishableKey: env('SUPABASE_PUBLISHABLE_KEY') || env('VITE_SUPABASE_PUBLISHABLE_KEY') || env('VITE_SUPABASE_ANON_KEY'),
+    secretKey: env('SUPABASE_SECRET_KEY') || env('SUPABASE_SERVICE_ROLE_KEY'),
   }
 }
 
@@ -148,7 +149,7 @@ async function handle(request: Request) {
     let existingAccount = Boolean(existingUser)
 
     if (!invitedUser) {
-      const redirectTo = process.env.SUPABASE_INVITE_REDIRECT_URL ?? `${url.origin}/`
+      const redirectTo = env('SUPABASE_INVITE_REDIRECT_URL') || `${url.origin}/`
       const inviteUrl = new URL(`${projectUrl}/auth/v1/invite`)
       inviteUrl.searchParams.set('redirect_to', redirectTo)
       const inviteResponse = await supabaseRequest(projectUrl, `${inviteUrl.pathname}${inviteUrl.search}`, secretKey, {
@@ -176,7 +177,7 @@ async function handle(request: Request) {
     let confirmationResent = false
     if (existingAccount && !(invitedUser.email_confirmed_at ?? invitedUser.confirmed_at)) {
       const resendUrl = new URL(`${projectUrl}/auth/v1/resend`)
-      const redirectTo = process.env.SUPABASE_INVITE_REDIRECT_URL ?? `${url.origin}/`
+      const redirectTo = env('SUPABASE_INVITE_REDIRECT_URL') || `${url.origin}/`
       resendUrl.searchParams.set('redirect_to', redirectTo)
       const resendResponse = await supabaseRequest(projectUrl, `${resendUrl.pathname}${resendUrl.search}`, publishableKey, {
         method: 'POST',
