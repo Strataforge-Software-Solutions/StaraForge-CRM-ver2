@@ -1,5 +1,5 @@
 type WorkspaceRole = 'owner' | 'admin' | 'member'
-type AuthUser = { id: string; email?: string; email_confirmed_at?: string | null; confirmed_at?: string | null; last_sign_in_at?: string | null; user_metadata?: Record<string, unknown> }
+type AuthUser = { id: string; email?: string; email_confirmed_at?: string | null; confirmed_at?: string | null; last_sign_in_at?: string | null; user_metadata?: Record<string, unknown>; app_metadata?: Record<string, unknown> }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } })
 const env = (name: string) => (globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }).process?.env?.[name] ?? ''
@@ -105,17 +105,28 @@ async function addMembership(projectUrl: string, secretKey: string, workspaceId:
   }
 }
 
+async function setInitialPassword(projectUrl: string, secretKey: string, user: AuthUser, password: string) {
+  const response = await supabaseRequest(projectUrl, `/auth/v1/admin/users/${encodeURIComponent(user.id)}`, secretKey, {
+    method: 'PUT',
+    body: JSON.stringify({
+      password,
+      app_metadata: { ...user.app_metadata, password_set_by_inviter: true },
+    }),
+  })
+  if (!response.ok) throw new Error('The invitation email was sent, but its password could not be set. Retry without a password to add the account and let the invitee choose one.')
+}
+
 async function handle(request: Request) {
   if (!['GET', 'POST'].includes(request.method)) return json({ error: 'Method not allowed.' }, 405)
   if (!sameOrigin(request)) return json({ error: 'This request must come from the StrataForge app.' }, 403)
 
   const { projectUrl, publishableKey, secretKey } = environment()
   if (!projectUrl || !publishableKey || !secretKey) {
-    return json({ error: 'Invites are not configured yet. Add SUPABASE_SECRET_KEY to the Vercel project environment and redeploy.' }, 503)
+    return json({ error: 'Workspace member management is not configured. Add SUPABASE_SECRET_KEY to the server environment and restart the app.' }, 503)
   }
 
   const url = new URL(request.url)
-  let payload: { workspaceId?: unknown; email?: unknown; role?: unknown }
+  let payload: { workspaceId?: unknown; email?: unknown; role?: unknown; password?: unknown }
   if (request.method === 'GET') {
     payload = { workspaceId: url.searchParams.get('workspaceId') }
   } else {
@@ -134,8 +145,11 @@ async function handle(request: Request) {
 
     const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : ''
     const role = payload.role
+    const password = typeof payload.password === 'string' ? payload.password : ''
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: 'Enter a valid email address.' }, 400)
     if (role !== 'member' && role !== 'admin') return json({ error: 'Choose a valid workspace role.' }, 400)
+    if (payload.password !== undefined && typeof payload.password !== 'string') return json({ error: 'Enter a valid initial password.' }, 400)
+    if (password && (password.length < 8 || password.length > 128)) return json({ error: 'Use 8 to 128 characters for the initial password.' }, 400)
 
     const query = new URLSearchParams({ select: 'user_id', workspace_id: `eq.${workspaceId}`, email: `eq.${email}`, limit: '1' })
     const existingMemberResponse = await supabaseRequest(projectUrl, `/rest/v1/workspace_members?${query}`, secretKey)
@@ -148,6 +162,7 @@ async function handle(request: Request) {
     let invitedUser = existingUser
     let inviteSent = false
     let existingAccount = Boolean(existingUser)
+    let initialPasswordSet = false
 
     if (!invitedUser) {
       const redirectTo = env('SUPABASE_INVITE_REDIRECT_URL') || `${url.origin}/`
@@ -173,6 +188,14 @@ async function handle(request: Request) {
     }
 
     if (!invitedUser) return json({ error: 'Supabase did not return the invited account.' }, 502)
+    if (password) {
+      const stillPending = !(invitedUser.email_confirmed_at ?? invitedUser.confirmed_at)
+      if (existingAccount && !(invitedUser.app_metadata?.password_set_by_inviter === true && stillPending)) {
+        return json({ error: 'A password can only be set for a new invitation. Existing account passwords are not changed.' }, 409)
+      }
+      await setInitialPassword(projectUrl, secretKey, invitedUser, password)
+      initialPasswordSet = true
+    }
     await addMembership(projectUrl, secretKey, workspaceId, invitedUser, email, role)
 
     let confirmationResent = false
@@ -187,7 +210,7 @@ async function handle(request: Request) {
       confirmationResent = resendResponse.ok
     }
 
-    return json({ ok: true, email, role, inviteSent, existingAccount, confirmationResent }, 201)
+    return json({ ok: true, email, role, inviteSent, existingAccount, confirmationResent, initialPasswordSet }, 201)
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : 'Workspace access could not be updated.'
     return json({ error: message }, 502)

@@ -8,7 +8,7 @@ import { emptyProfilePhotos } from '../lib/profilePhoto'
 
 type WorkspaceRole = 'owner' | 'admin' | 'member'
 type WorkspaceMember = { userId?: string; email: string; displayName: string; role: WorkspaceRole; status: 'active' | 'pending'; createdAt: string }
-type InviteResult = { ok?: boolean; inviteSent?: boolean; existingAccount?: boolean; confirmationResent?: boolean; error?: string }
+type InviteResult = { ok?: boolean; inviteSent?: boolean; existingAccount?: boolean; confirmationResent?: boolean; initialPasswordSet?: boolean; error?: string }
 
 async function apiRequest(path: string, session: { access_token: string }, init: RequestInit = {}) {
   const response = await fetch(path, {
@@ -39,6 +39,8 @@ export default function AccessPage() {
   const [reviewing, setReviewing] = useState(false)
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<'member' | 'admin'>('member')
+  const [invitePassword, setInvitePassword] = useState('')
+  const [invitePasswordConfirm, setInvitePasswordConfirm] = useState('')
   const [sending, setSending] = useState(false)
   const [inviteError, setInviteError] = useState('')
 
@@ -75,9 +77,11 @@ export default function AccessPage() {
         const includesCurrentAccount = roster.some(member => member.email.toLowerCase() === ownMember.email.toLowerCase())
         setMembers(includesCurrentAccount ? roster : [...roster, ownMember])
         if (!includesCurrentAccount) setRosterNotice('Your account is connected and shown below, but it was missing from the roster response.')
-      } catch {
+      } catch (cause) {
         setMembers([ownMember])
-        setRosterNotice('Your account is connected, but the full member roster could not be loaded in this environment.')
+        setRosterNotice(cause instanceof Error
+          ? `Your account is connected, but the full member roster could not be loaded: ${cause.message}`
+          : 'Your account is connected, but the full member roster could not be loaded in this environment.')
       }
     } catch (cause) {
       setPageError(cause instanceof Error ? cause.message : 'Workspace members could not be loaded.')
@@ -88,12 +92,14 @@ export default function AccessPage() {
 
   const closeInvite = () => {
     if (sending) return
-    setInviteOpen(false); setReviewing(false); setEmail(''); setRole('member'); setInviteError('')
+    setInviteOpen(false); setReviewing(false); setEmail(''); setRole('member'); setInvitePassword(''); setInvitePasswordConfirm(''); setInviteError('')
   }
 
   const handleReview = (event: FormEvent) => {
     event.preventDefault()
     setInviteError('')
+    if (invitePassword && invitePassword.length < 8) { setInviteError('Use at least 8 characters for the initial password.'); return }
+    if (invitePassword !== invitePasswordConfirm) { setInviteError('The passwords do not match.'); return }
     setReviewing(true)
   }
 
@@ -105,15 +111,15 @@ export default function AccessPage() {
     try {
       const result = await apiRequest('/api/workspace-members', session, {
         method: 'POST',
-        body: JSON.stringify({ workspaceId, email: email.trim(), role }),
+        body: JSON.stringify({ workspaceId, email: email.trim(), role, password: invitePassword || undefined }),
       }) as InviteResult
       const normalizedEmail = email.trim().toLowerCase()
       setNotice(result.inviteSent
-        ? `Invitation email sent to ${normalizedEmail}.`
+        ? `Invitation email sent to ${normalizedEmail}.${result.initialPasswordSet ? ' Share the password through a separate secure channel.' : ''}`
         : result.confirmationResent
           ? `Account added and confirmation email resent to ${normalizedEmail}.`
           : `Existing account ${normalizedEmail} added to the workspace.`)
-      setInviteOpen(false); setReviewing(false); setEmail(''); setRole('member'); setInviteError('')
+      setInviteOpen(false); setReviewing(false); setEmail(''); setRole('member'); setInvitePassword(''); setInvitePasswordConfirm(''); setInviteError('')
       await loadMembers()
     } catch (cause) {
       setInviteError(cause instanceof Error ? cause.message : 'The invitation could not be sent.')
@@ -141,11 +147,16 @@ export default function AccessPage() {
         {!reviewing ? <form onSubmit={handleReview}>
           <label className="admin-form-field">Email address<input autoFocus type="email" autoComplete="email" required maxLength={254} value={email} onChange={event => setEmail(event.target.value)} placeholder="teammate@company.com"/></label>
           <label className="admin-form-field">Workspace role<CustomSelect ariaLabel="Workspace role" className="admin-role-select" value={role} options={[{ label: 'Member', value: 'member' }, { label: 'Admin', value: 'admin' }]} onChange={value => setRole(value as 'member' | 'admin')}/></label>
+          <label className="admin-form-field">Temporary password <span className="admin-form-optional">Optional · new accounts only</span><input type="password" autoComplete="new-password" minLength={8} maxLength={128} value={invitePassword} onChange={event => { setInvitePassword(event.target.value); if (!event.target.value) setInvitePasswordConfirm('') }} placeholder="At least 8 characters"/></label>
+          {invitePassword && <label className="admin-form-field">Confirm temporary password<input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={invitePasswordConfirm} onChange={event => setInvitePasswordConfirm(event.target.value)} placeholder="Re-enter the password"/></label>}
+          {inviteError && <p className="admin-form-error" role="alert">{inviteError}</p>}
           <p className="invite-behavior-note"><MailPlus size={15}/> New accounts receive an email invitation. Existing accounts are added immediately and won’t receive a new invite email.</p>
+          <p className="invite-behavior-note"><ShieldCheck size={15}/> A temporary password is set only for a new account. After accepting the invitation, they choose their own password before setting up 2FA. Existing account passwords are never changed.</p>
           <footer><button className="admin-cancel" type="button" onClick={closeInvite}>Cancel</button><button className="admin-submit" type="submit"><UserPlus size={14}/>Review invite</button></footer>
         </form> : <>
           <div className="invite-review-card"><span>Email address</span><b>{email.trim().toLowerCase()}</b><span>Workspace role</span><b>{role === 'admin' ? 'Admin' : 'Member'}</b></div>
-          <p className="invite-confirmation-note">{role === 'admin' ? 'Admins can manage workspace invitations and view CRM data.' : 'Members can access workspace CRM data.'} New accounts get an invitation email. If this email already has an account, it is added immediately.</p>
+          <p className="invite-confirmation-note">{role === 'admin' ? 'Admins can manage workspace invitations and view CRM data.' : 'Members can access workspace CRM data.'} New accounts get an invitation email and then choose their own password before authenticator setup.{invitePassword ? ' The temporary password you set is replaced during account setup.' : ''} Existing accounts are added without changing their password.</p>
+          {invitePassword && <p className="invite-password-set-note">Temporary password provided · invitee sets a new one before 2FA</p>}
           {inviteError && <p className="admin-form-error" role="alert">{inviteError}</p>}
           <footer><button className="admin-cancel" type="button" onClick={() => { setReviewing(false); setInviteError('') }} disabled={sending}>Back</button><button className="admin-submit" type="button" onClick={() => void sendInvite()} disabled={sending}>{sending ? <LoaderCircle size={14} className="workspace-inline-spinner"/> : <MailPlus size={14}/>} {sending ? 'Sending…' : 'Send invitation'}</button></footer>
         </>}

@@ -28,9 +28,10 @@ Copy `.env.example` to `.env.local` and fill in values from Supabase Project Set
 ```dotenv
 VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
+SUPABASE_SECRET_KEY=YOUR_SUPABASE_SECRET_KEY
 ```
 
-Run `npm install` and `npm run dev`. The Vite app runs at `http://127.0.0.1:55010`. `.env.local` is ignored by Git.
+The `SUPABASE_SECRET_KEY` is used only by the local server-side workspace-members API for listing and inviting members; it must never use a `VITE_` prefix. Run `npm install` and `npm run dev`. The Vite app and its workspace-members API run at `http://127.0.0.1:55010`. `.env.local` is ignored by Git.
 
 ## 3. Deploy on Vercel
 
@@ -45,7 +46,7 @@ The Vercel deployment cannot be linked or published until a Supabase project and
 
 `crm_collections` stores each CRM collection as JSONB under `(workspace_id, collection_key)`. The browser keeps a small in-memory cache; Supabase is the persistent source. Collections are initialized empty when first used. `workspace_members` and `workspaces` contain membership metadata, not CRM demo records. Migration installs RLS policies that require workspace membership and MFA assurance for CRM access.
 
-Workspace owners and admins can invite teammates from the Access page. The Vercel function verifies the signed-in user and MFA assurance, checks their role for the requested workspace, sends new-user invitations through Supabase Auth, and writes the resulting membership server-side. Existing Auth accounts are added to the workspace directly; unconfirmed accounts receive a confirmation email resend. Invitees set a password and complete authenticator setup before CRM access.
+Workspace owners and admins can invite teammates from the Access page. The server function verifies the signed-in user and MFA assurance, checks their role for the requested workspace, sends new-user invitations through Supabase Auth, and writes the resulting membership server-side. Admins may optionally set a temporary password for a newly invited account. After accepting the email invitation, every new invitee chooses their own password, then completes authenticator setup before CRM access; the temporary password is replaced during that setup. Existing Auth accounts are added without changing their password; unconfirmed accounts receive a confirmation email resend.
 
 Account and lead profile photos are resized to a 512-pixel WebP and saved in the workspace-scoped `profilePhotos` CRM collection. The browser uploads the image through the signed-in member's existing Supabase session, so photo updates do not require a server-only secret or a separate storage bucket. Profile images are available to members of the same workspace.
 

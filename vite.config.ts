@@ -1,7 +1,51 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import workspaceMembers from './api/workspace-members'
 
-export default defineConfig({
-  plugins: [react()],
-  server: { host: '127.0.0.1', port: 55010, strictPort: true },
+export default defineConfig(({ mode }) => {
+  const serverEnv = loadEnv(mode, process.cwd(), '')
+
+  // Keep server-only settings available to the local API handler without
+  // exposing them through Vite's client-side import.meta.env values.
+  for (const name of ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_INVITE_REDIRECT_URL']) {
+    if (!process.env[name] && serverEnv[name]) process.env[name] = serverEnv[name]
+  }
+
+  return {
+    plugins: [react(), {
+      name: 'strataforge-workspace-members-api',
+      configureServer(server) {
+        server.middlewares.use('/api/workspace-members', async (req, res, next) => {
+          try {
+            if (!req.url) return next()
+            const method = req.method ?? 'GET'
+            const headers = new Headers()
+            for (const [name, value] of Object.entries(req.headers)) {
+              if (typeof value === 'string') headers.set(name, value)
+              else if (Array.isArray(value)) headers.set(name, value.join(', '))
+            }
+
+            let body: string | undefined
+            if (method !== 'GET' && method !== 'HEAD') {
+              const chunks: Uint8Array[] = []
+              for await (const chunk of req) chunks.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk)
+              body = new TextDecoder().decode(Buffer.concat(chunks))
+            }
+
+            const request = new Request(`http://${req.headers.host ?? '127.0.0.1'}${req.url}`, { method, headers, body })
+            const response = await workspaceMembers.fetch(request)
+            res.statusCode = response.status
+            response.headers.forEach((value, name) => res.setHeader(name, value))
+            res.end(await response.text())
+          } catch (error) {
+            server.config.logger.error('Local workspace member API failed', { error })
+            res.statusCode = 500
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: 'The local workspace member API could not complete the request.' }))
+          }
+        })
+      },
+    }],
+    server: { host: '127.0.0.1', port: 55010, strictPort: true },
+  }
 })
