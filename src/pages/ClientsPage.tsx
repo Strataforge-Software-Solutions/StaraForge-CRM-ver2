@@ -17,8 +17,18 @@ export default function ClientsPage({ onAdd, onOpenRecord }: { onAdd: () => void
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('Recently updated')
   const [rows, setRows] = useDatabaseCollection('clients', clientDirectory)
+  const [additionalProjects] = useDatabaseCollection<ProjectDirectoryRow[]>('projects', [])
+  const [projectOverrides] = useDatabaseCollection<Record<string, Partial<ProjectDirectoryRow>>>('projectOverrides', {})
+  const [deletedProjects] = useDatabaseCollection<string[]>('deletedProjects', [])
+  const [projectStatusOverrides] = useDatabaseCollection<Record<string, string>>('projectStatusOverrides', {})
   const [action, setAction] = useState<DirectoryAction | null>(null)
   const [selectedClient, setSelectedClient] = useState<ClientDirectoryRow | null>(null)
+  const allProjects = [...projectDirectory.filter(project => !additionalProjects.some(extra => extra.name === project.name)), ...additionalProjects]
+    .map(project => ({ ...project, ...projectOverrides[project.name], status: projectStatusOverrides[project.name] ?? projectOverrides[project.name]?.status ?? project.status }))
+    .filter(project => !deletedProjects.includes(project.name))
+  const activeClients = rows.filter(row => row.status.toLowerCase() === 'active').length
+  const completedProjects = allProjects.filter(project => project.status.toLowerCase() === 'completed').length
+  const ongoingProjects = allProjects.filter(project => ['planned', 'in progress'].includes(project.status.toLowerCase())).length
   const tabs = [{ label: 'All clients', value: 'all', count: rows.length }, { label: 'Active', value: 'Active', count: rows.filter(row => row.status === 'Active').length }, { label: 'On hold', value: 'On hold', count: rows.filter(row => row.status === 'On hold').length }, { label: 'Inactive', value: 'Inactive', count: rows.filter(row => row.status === 'Inactive').length }]
   const visible = rows.filter(row => (active === 'all' || row.status === active) && `${row.name} ${row.contact} ${row.email}`.toLowerCase().includes(search.toLowerCase()))
   const sorted = sort === 'Name A–Z' ? [...visible].sort((a, b) => a.name.localeCompare(b.name)) : sort === 'Project count' ? [...visible].sort((a, b) => b.projects - a.projects) : visible
@@ -51,17 +61,17 @@ export default function ClientsPage({ onAdd, onOpenRecord }: { onAdd: () => void
   return <div className="directory-page">
     <DirectoryHeader section="RELATIONSHIPS" title="Clients" description="Manage your clients, their projects, and communication in one place." action="Add Client" onAction={onAdd}/>
     <MetricsStrip metrics={[
-      { icon: Users, label: 'Total clients', value: '4', detail: 'In your workspace', tone: 'orange' },
-      { icon: Building2, label: 'Active clients', value: '4', detail: 'Current relationships', tone: 'blue' },
-      { icon: Check, label: 'Completed projects', value: '1', detail: 'Finished client work', tone: 'green' },
-      { icon: Layers3, label: 'Ongoing projects', value: '2', detail: 'Planned or in delivery', tone: 'purple' },
+      { icon: Users, label: 'Total clients', value: String(rows.length), detail: 'In your workspace', tone: 'orange' },
+      { icon: Building2, label: 'Active clients', value: String(activeClients), detail: 'Current relationships', tone: 'blue' },
+      { icon: Check, label: 'Completed projects', value: String(completedProjects), detail: 'Finished client work', tone: 'green' },
+      { icon: Layers3, label: 'Ongoing projects', value: String(ongoingProjects), detail: 'Planned or in delivery', tone: 'purple' },
     ]}/>
     <div className="directory-toolbar"><DirectoryTabs tabs={tabs} active={active} onChange={setActive}/><div className="toolbar-controls"><label className="directory-search compact"><Search size={17}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search clients, projects, or contacts..."/></label><label className="directory-sort"><CustomSelect className="directory-sort-select" showChevron={false} value={sort} options={['Recently updated', 'Name A–Z', 'Project count']} onChange={setSort}/><ChevronDown size={15}/></label></div></div>
     <section className="directory-panel"><div className="directory-panel-head"><div><h2>Client directory</h2><span>{sorted.length} {sorted.length === 1 ? 'client' : 'clients'}</span></div></div>
       <div className="directory-table-wrap"><table className="directory-table clients-table"><thead><tr><th>Client</th><th>Primary contact</th><th>Email / phone</th><th>Status</th><th>Projects</th><th>Total value</th><th>Updated</th><th>Actions</th></tr></thead><tbody>
         {sorted.map(row => <tr key={row.name}><td><div className="person-cell"><span className={`directory-avatar ${row.tone}`}>{row.initials}</span><div><b>{row.name}</b><small>{row.kind}</small></div></div></td><td><div className="primary-contact"><b>{row.contact}</b><small>{row.relation}</small></div></td><td><ContactDetails email={row.email} phone={row.phone}/></td><td><span className="client-active">{row.status}</span></td><td>{row.projects}</td><td>{row.value}</td><td>{row.updated}</td><td><RecordActionButtons name={row.name} onAction={mode => mode === 'view' ? setSelectedClient(row) : openAction(row, mode)}/></td></tr>)}
-      </tbody></table>{sorted.length === 0 && <div className="directory-empty">No clients match your search.</div>}</div>
-      <div className="directory-panel-foot"><span>1–{sorted.length} of {sorted.length} clients</span><span className="pagination"><button disabled><ChevronLeft size={16}/></button>Page 1 of 1<button disabled><ChevronRight size={16}/></button></span><label>Rows <CustomSelect className="rows-select" value="10 per page" options={['10 per page', '25 per page']}/></label></div>
+      </tbody></table>{sorted.length === 0 && <div className="directory-empty">{rows.length === 0 && active === 'all' && !search.trim() ? 'No clients yet. Add a client to get started.' : 'No clients match your search or filter.'}</div>}</div>
+      <div className="directory-panel-foot"><span>{sorted.length === 0 ? `0 of ${rows.length} clients` : `1–${sorted.length} of ${rows.length} clients`}</span><span className="pagination"><button disabled><ChevronLeft size={16}/></button>Page 1 of 1<button disabled><ChevronRight size={16}/></button></span><label>Rows <CustomSelect className="rows-select" value="10 per page" options={['10 per page', '25 per page']}/></label></div>
     </section>
     {action && <RecordActionDialog key={`${action.mode}-${action.name}`} action={action} onClose={() => setAction(null)}/>}
     {selectedClient && <ClientDetailDrawer key={selectedClient.name} client={selectedClient} onClose={() => setSelectedClient(null)} onDelete={() => openAction(selectedClient, 'delete')} onOpenRecord={() => { onOpenRecord(selectedClient); setSelectedClient(null) }}/>}

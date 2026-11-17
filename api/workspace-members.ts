@@ -123,9 +123,10 @@ async function generateManualInvite(projectUrl: string, secretKey: string, email
   })
   const body = await readJson(response)
   if (!response.ok) throw new Error('Supabase could not generate a manual invitation link.')
-  const user = body.user as AuthUser | undefined
+  // GoTrue returns the user fields and link properties in one flat object.
+  const user = body as AuthUser
   const actionLink = typeof body.action_link === 'string' ? body.action_link : ''
-  if (!user?.id || !actionLink) throw new Error('Supabase did not return a complete manual invitation link.')
+  if (!user.id || !actionLink) throw new Error('Supabase did not return a complete manual invitation link.')
   return { user, actionLink }
 }
 
