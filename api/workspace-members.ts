@@ -116,6 +116,19 @@ async function setInitialPassword(projectUrl: string, secretKey: string, user: A
   if (!response.ok) throw new Error('The invitation email was sent, but its password could not be set. Retry without a password to add the account and let the invitee choose one.')
 }
 
+async function generateManualInvite(projectUrl: string, secretKey: string, email: string, redirectTo: string) {
+  const response = await supabaseRequest(projectUrl, '/auth/v1/admin/generate_link', secretKey, {
+    method: 'POST',
+    body: JSON.stringify({ type: 'invite', email, redirect_to: redirectTo }),
+  })
+  const body = await readJson(response)
+  if (!response.ok) throw new Error('Supabase could not generate a manual invitation link.')
+  const user = body.user as AuthUser | undefined
+  const actionLink = typeof body.action_link === 'string' ? body.action_link : ''
+  if (!user?.id || !actionLink) throw new Error('Supabase did not return a complete manual invitation link.')
+  return { user, actionLink }
+}
+
 async function handle(request: Request) {
   if (!['GET', 'POST'].includes(request.method)) return json({ error: 'Method not allowed.' }, 405)
   if (!sameOrigin(request)) return json({ error: 'This request must come from the StrataForge app.' }, 403)
@@ -163,6 +176,8 @@ async function handle(request: Request) {
     let inviteSent = false
     let existingAccount = Boolean(existingUser)
     let initialPasswordSet = false
+    let inviteEmailRateLimited = false
+    let manualInviteLink = ''
 
     if (!invitedUser) {
       const redirectTo = env('SUPABASE_INVITE_REDIRECT_URL') || `${url.origin}/`
@@ -175,6 +190,19 @@ async function handle(request: Request) {
       const inviteBody = await readJson(inviteResponse)
       if (!inviteResponse.ok || !inviteBody.id) {
         const message = String(inviteBody.msg ?? inviteBody.message ?? '')
+        const emailRateLimited = inviteResponse.status === 429
+          || inviteBody.code === 'over_email_send_rate_limit'
+          || /email rate limit exceeded|over_email_send_rate_limit/i.test(message)
+        if (emailRateLimited) {
+          try {
+            const generated = await generateManualInvite(projectUrl, secretKey, email, redirectTo)
+            invitedUser = generated.user
+            manualInviteLink = generated.actionLink
+            inviteEmailRateLimited = true
+          } catch {
+            return json({ error: 'Supabase email is rate-limited. Configure custom SMTP in Supabase Auth settings, then retry the invitation.' }, 429)
+          }
+        }
         if (/already (been )?registered|already exists/i.test(message)) {
           const refreshedUsers = await getAuthUsers(projectUrl, secretKey)
           invitedUser = refreshedUsers.find(user => user.email?.toLowerCase() === email)
@@ -210,7 +238,7 @@ async function handle(request: Request) {
       confirmationResent = resendResponse.ok
     }
 
-    return json({ ok: true, email, role, inviteSent, existingAccount, confirmationResent, initialPasswordSet }, 201)
+    return json({ ok: true, email, role, inviteSent, existingAccount, confirmationResent, initialPasswordSet, inviteEmailRateLimited, manualInviteLink }, 201)
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : 'Workspace access could not be updated.'
     return json({ error: message }, 502)

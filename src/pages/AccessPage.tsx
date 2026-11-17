@@ -8,7 +8,7 @@ import { emptyProfilePhotos } from '../lib/profilePhoto'
 
 type WorkspaceRole = 'owner' | 'admin' | 'member'
 type WorkspaceMember = { userId?: string; email: string; displayName: string; role: WorkspaceRole; status: 'active' | 'pending'; createdAt: string }
-type InviteResult = { ok?: boolean; inviteSent?: boolean; existingAccount?: boolean; confirmationResent?: boolean; initialPasswordSet?: boolean; error?: string }
+type InviteResult = { ok?: boolean; inviteSent?: boolean; existingAccount?: boolean; confirmationResent?: boolean; initialPasswordSet?: boolean; inviteEmailRateLimited?: boolean; manualInviteLink?: string; error?: string }
 
 async function apiRequest(path: string, session: { access_token: string }, init: RequestInit = {}) {
   const response = await fetch(path, {
@@ -43,6 +43,9 @@ export default function AccessPage() {
   const [invitePasswordConfirm, setInvitePasswordConfirm] = useState('')
   const [sending, setSending] = useState(false)
   const [inviteError, setInviteError] = useState('')
+  const [manualInviteLink, setManualInviteLink] = useState('')
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false)
+  const [manualInvitePasswordSet, setManualInvitePasswordSet] = useState(false)
 
   const loadMembers = useCallback(async () => {
     setLoading(true)
@@ -114,16 +117,38 @@ export default function AccessPage() {
         body: JSON.stringify({ workspaceId, email: email.trim(), role, password: invitePassword || undefined }),
       }) as InviteResult
       const normalizedEmail = email.trim().toLowerCase()
-      setNotice(result.inviteSent
+      setNotice(result.manualInviteLink
+        ? `Supabase could not email ${normalizedEmail}; a verified invitation link is ready to copy.`
+        : result.inviteSent
         ? `Invitation email sent to ${normalizedEmail}.${result.initialPasswordSet ? ' Share the password through a separate secure channel.' : ''}`
         : result.confirmationResent
           ? `Account added and confirmation email resent to ${normalizedEmail}.`
           : `Existing account ${normalizedEmail} added to the workspace.`)
+      if (result.manualInviteLink) {
+        setManualInviteLink(result.manualInviteLink)
+        setInviteLinkCopied(false)
+        setManualInvitePasswordSet(Boolean(result.initialPasswordSet))
+      }
       setInviteOpen(false); setReviewing(false); setEmail(''); setRole('member'); setInvitePassword(''); setInvitePasswordConfirm(''); setInviteError('')
       await loadMembers()
     } catch (cause) {
       setInviteError(cause instanceof Error ? cause.message : 'The invitation could not be sent.')
     } finally { setSending(false) }
+  }
+
+  const copyManualInviteLink = async () => {
+    try {
+      await navigator.clipboard.writeText(manualInviteLink)
+      setInviteLinkCopied(true)
+    } catch {
+      setInviteLinkCopied(false)
+    }
+  }
+
+  const closeManualInviteLink = () => {
+    setManualInviteLink('')
+    setInviteLinkCopied(false)
+    setManualInvitePasswordSet(false)
   }
 
   return <div className="directory-page admin-page access-page">
@@ -141,6 +166,7 @@ export default function AccessPage() {
       <div className="admin-panel-foot"><span>New invitees set a password and authenticator before opening workspace data.</span><span>Only owners and admins can invite.</span></div>
     </section>
     {notice && <div className="workspace-toast access-toast" role="status" aria-live="polite"><Check size={15}/>{notice}<button type="button" aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={14}/></button></div>}
+    {manualInviteLink && <div className="admin-modal-backdrop"><section className="admin-invite-modal manual-invite-modal" role="dialog" aria-modal="true" aria-labelledby="manual-invite-title"><header><div><span className="directory-eyebrow">INVITATION DELIVERY</span><h2 id="manual-invite-title">Email limit reached</h2><p>The invite is created. Supabase could not send its email, so send this confirmation link directly to the invitee.</p></div><button className="admin-modal-close" type="button" aria-label="Close invitation link" onClick={closeManualInviteLink}><X size={16}/></button></header><label className="admin-form-field">Verified invitation link<input className="manual-invite-link-input" type="text" readOnly value={manualInviteLink} onFocus={event => event.currentTarget.select()}/></label><p className="invite-behavior-note"><ShieldCheck size={15}/> Treat this link like a password. Send it only to the email address you invited. Email delivery will work normally after custom SMTP is configured in Supabase.</p>{manualInvitePasswordSet && <p className="invite-behavior-note"><ShieldCheck size={15}/> You set a temporary password. Share it separately if the invitee needs it; they will replace it with their own password before 2FA.</p>}<footer><button className="admin-cancel" type="button" onClick={closeManualInviteLink}>Close</button><button className="admin-submit" type="button" onClick={() => void copyManualInviteLink()}>{inviteLinkCopied ? <Check size={14}/> : <MailPlus size={14}/>} {inviteLinkCopied ? 'Copied' : 'Copy invitation link'}</button></footer></section></div>}
     {inviteOpen && <div className="admin-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeInvite() }}>
       <section className="admin-invite-modal" role="dialog" aria-modal="true" aria-labelledby="invite-title">
         <header><div><span className="directory-eyebrow">WORKSPACE ACCESS</span><h2 id="invite-title">{reviewing ? 'Review invitation' : 'Invite a teammate'}</h2><p>{reviewing ? 'Check the email and access level before continuing.' : 'Choose an email address and the access they need.'}</p></div><button className="admin-modal-close" type="button" aria-label="Close invitation" onClick={closeInvite}><X size={16}/></button></header>
