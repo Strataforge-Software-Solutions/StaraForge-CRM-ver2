@@ -1,21 +1,26 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import workspaceMembers from './api/workspace-members'
+import { apiFetch as authApi } from './api/auth'
+import { apiFetch as crmDataApi } from './api/crm-data'
 
 export default defineConfig(({ mode }) => {
   const serverEnv = loadEnv(mode, process.cwd(), '')
 
   // Keep server-only settings available to the local API handler without
   // exposing them through Vite's client-side import.meta.env values.
-  for (const name of ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_INVITE_REDIRECT_URL']) {
+  for (const name of ['SUPABASE_URL', 'VITE_SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'AUTH_SESSION_SECRET', 'AUTH_BOOTSTRAP_TOKEN', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']) {
     if (!process.env[name] && serverEnv[name]) process.env[name] = serverEnv[name]
   }
 
   return {
     plugins: [react(), {
-      name: 'strataforge-workspace-members-api',
+      name: 'strataforge-server-api',
       configureServer(server) {
-        server.middlewares.use('/api/workspace-members', async (req, res, next) => {
+        const handlers: Record<string, (request: Request) => Promise<Response>> = {
+          '/api/auth': authApi,
+          '/api/crm-data': crmDataApi,
+        }
+        for (const [route, handler] of Object.entries(handlers)) server.middlewares.use(route, async (req, res, next) => {
           try {
             if (!req.url) return next()
             const method = req.method ?? 'GET'
@@ -33,12 +38,12 @@ export default defineConfig(({ mode }) => {
             }
 
             const request = new Request(`http://${req.headers.host ?? '127.0.0.1'}${req.url}`, { method, headers, body })
-            const response = await workspaceMembers.fetch(request)
+            const response = await handler(request)
             res.statusCode = response.status
             response.headers.forEach((value, name) => res.setHeader(name, value))
             res.end(await response.text())
           } catch (error) {
-            server.config.logger.error('Local workspace member API failed', { error })
+            server.config.logger.error('Local CRM API failed', { error })
             res.statusCode = 500
             res.setHeader('content-type', 'application/json')
             res.end(JSON.stringify({ error: 'The local workspace member API could not complete the request.' }))

@@ -1,6 +1,9 @@
+import { useWorkspaceTasks } from '../lib/tasks'
+import CustomerHub from '../components/CustomerHub'
+import { recordId, overrideFor, related } from '../lib/records'
 import { ArrowLeft, Building2, CalendarDays, Check, ClipboardList, FolderKanban, Mail, MapPin, Phone } from 'lucide-react'
-import type { ClientDirectoryRow } from './ClientsPage'
-import { projectDirectory, type ProjectDirectoryRow } from './ProjectsPage'
+import { ClientAvatar, type ClientDirectoryRow } from './ClientsPage'
+import { ProjectAvatar, projectDirectory, type ProjectDirectoryRow } from './ProjectsPage'
 import { projectTaskRows, type ProjectTaskRecord } from './ProjectTasksPage'
 import { useDatabaseCollection } from '../lib/database'
 
@@ -12,10 +15,10 @@ export default function ClientRecordPage({ client, additionalProjects = [], stat
   onOpenProject: (projectName: string) => void
   onOpenTask?: (task: ProjectTaskRecord) => void
 }) {
-  const [allTasks] = useDatabaseCollection<ProjectTaskRecord[]>('tasks', projectTaskRows)
+  const [allTasks] = useWorkspaceTasks()
   const projects = [...projectDirectory.filter(project => !additionalProjects.some(extra => extra.name === project.name)), ...additionalProjects]
-    .filter(project => project.client === client.name)
-    .map(project => ({ ...project, status: statusOverrides[project.name] ?? project.status }))
+    .filter(project => related(project, client, 'client'))
+    .map(project => ({ ...project, status: overrideFor(statusOverrides, project) ?? project.status }))
   const projectValue = projects.length === 0 ? '—' : projects.length === 1 ? projects[0].value : `${projects.length} projects`
   const projectNames = new Set(projects.map(project => project.name.toLowerCase()))
   const linkedTasks = allTasks.filter(task => projectNames.has(task.project.toLowerCase())).sort((a, b) => a.due.localeCompare(b.due))
@@ -24,7 +27,7 @@ export default function ClientRecordPage({ client, additionalProjects = [], stat
   return <div className="directory-page task-detail-page client-record-page">
     <button className="task-detail-back" onClick={onBack}><ArrowLeft size={15}/> Back to clients</button>
     <header className="task-detail-heading">
-      <div className="client-record-heading-main"><span className={`client-record-avatar ${client.tone}`}>{client.initials}</span><div><span className="directory-eyebrow">RELATIONSHIPS / CLIENTS</span><h1>{client.name}</h1><p>{client.kind} · {client.relation}</p></div></div>
+      <div className="client-record-heading-main"><ClientAvatar client={client} className="client-record-avatar"/><div><span className="directory-eyebrow">RELATIONSHIPS / CLIENTS</span><h1>{client.name}</h1><p>{client.kind} · {client.relation}</p></div></div>
       <span className="client-active">{client.status}</span>
     </header>
     <section className="client-record-metrics" aria-label="Client summary">
@@ -56,9 +59,10 @@ export default function ClientRecordPage({ client, additionalProjects = [], stat
       <div className="task-detail-card-heading"><span className="client-record-icon client-record-task-icon"><ClipboardList size={17}/></span><div><h2>Project tasks</h2><p>{linkedTasks.length} linked {linkedTasks.length === 1 ? 'task' : 'tasks'} across this client’s projects</p></div><span className="client-record-task-open-count">{openTasks} open</span></div>
       {linkedTasks.length ? <div className="client-record-task-list">{linkedTasks.map(task => <button type="button" className="client-record-task-row" key={`${task.project}-${task.title}`} onClick={() => onOpenTask?.(task)} disabled={!onOpenTask}><span className="client-record-task-check"><Check size={14}/></span><span className="client-record-task-copy"><b>{task.title}</b><small>{task.project}</small></span><span className="client-record-task-due"><CalendarDays size={13}/>{task.due}</span><span className={`project-task-status ${task.status.toLowerCase().replace(/ /g, '-')}`}>{task.status}</span></button>)}</div> : <div className="client-record-empty"><ClipboardList size={18}/><b>No tasks linked yet</b><span>Tasks from the client’s projects will appear here.</span></div>}
     </section>
+    <CustomerHub client={client}/>
   </div>
 }
 
 function ProjectCard({ project, onOpen }: { project: ProjectDirectoryRow; onOpen: () => void }) {
-  return <article className="client-record-project"><div><button type="button" className="client-record-project-link" onClick={onOpen}>{project.name}</button><small>{project.type} · Target {project.target}</small></div><span className={`project-record-status ${project.status.toLowerCase().replace(/ /g, '-')}`}>{project.status}</span><strong>{project.value}</strong></article>
+  return <article className="client-record-project"><div className="client-record-project-main"><ProjectAvatar project={project}/><div><button type="button" className="client-record-project-link" onClick={onOpen}>{project.name}</button><small>{project.type} · Target {project.target}</small></div></div><span className={`project-record-status ${project.status.toLowerCase().replace(/ /g, '-')}`}>{project.status}</span><strong>{project.value}</strong></article>
 }

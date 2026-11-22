@@ -1,7 +1,11 @@
+import { useWorkspaceTasks } from '../lib/tasks'
+import PaymentPanel from '../components/PaymentPanel'
+import { useDatabaseCollection } from '../lib/database'
+import { recordId, overrideFor, related } from '../lib/records'
 import { useEffect, useRef, useState } from 'react'
 import { Activity, ArrowLeft, ArrowRight, Camera, Check, CircleDollarSign, Eye, ImagePlus, Pencil, TrendingUp, X } from 'lucide-react'
 import type { LeadDirectoryRow } from './LeadsPage'
-import type { ProjectDirectoryRow } from './ProjectsPage'
+import { ProjectAvatar, type ProjectDirectoryRow } from './ProjectsPage'
 import { projectTaskRows, type ProjectTaskRecord } from './ProjectTasksPage'
 import { CustomSelect } from '../components/CustomControls'
 import { showWorkspaceToast } from '../lib/workspaceToast'
@@ -15,7 +19,9 @@ export default function LeadLinkedProjectOverview({ lead, project, statusOverrid
   onOpenProject: (projectName: string) => void
   onOpenTask: (task: ProjectTaskRecord) => void
 }) {
-  const tasks = projectTaskRows.filter(task => task.project === project.name)
+  const [storedTasks] = useWorkspaceTasks()
+  const [workflowFiles] = useDatabaseCollection<Record<string, { name: string; data: string }>>('workflowFiles', {})
+  const tasks = storedTasks.filter(task => related(task, project, 'project'))
   const status = statusOverride ?? project.status
   const match = project.value.match(/^(PHP|USD)\s*([\d,.]+)/)
   const currency = match?.[1] ?? 'PHP'
@@ -26,21 +32,16 @@ export default function LeadLinkedProjectOverview({ lead, project, statusOverrid
 
   return <section className="lead-linked-project">
     <header className="lead-project-heading">
-      <div><span className="directory-eyebrow">DELIVERY WORKSPACE / LEADS</span><div className="lead-project-title"><span className="directory-avatar orange">{project.initials}</span><div><h2>{project.name}</h2><p>{project.client} · {lead.name}</p></div></div></div>
+      <div><span className="directory-eyebrow">DELIVERY WORKSPACE / LEADS</span><div className="lead-project-title"><ProjectAvatar project={project}/><div><h2>{project.name}</h2><p>{project.client} · {lead.name}</p></div></div></div>
       <div className="lead-project-actions"><button className="lead-project-primary" onClick={() => onViewTasks(project.name)}><Activity size={14}/>View tasks</button><button className="lead-project-secondary" onClick={() => onOpenProject(project.name)}><ArrowLeft size={14}/>Projects</button></div>
     </header>
-    <section className="lead-project-metrics" aria-label="Project summary">
-      <EditableProjectMetric icon={TrendingUp} label="Project status" value={status} detail="Delivery progress" tone="orange" editor="status" rawValue={status} onSave={value => onStatusChange(project.name, value)}/>
-      <EditableProjectMetric icon={CircleDollarSign} label="Agreed value" value={money(agreed)} detail="Agreed project value" tone="blue" editor="amount" rawValue={String(agreed)} onSave={value => setAgreed(Number(value))}/>
-      <EditableProjectMetric icon={Check} label="Payments received" value={money(paid)} detail={paid ? 'Payment total entered' : 'No receipts recorded'} tone="green" editor="amount" rawValue={String(paid)} onSave={value => setPaid(Number(value))}/>
-      <EditableProjectMetric icon={TrendingUp} label="Remaining balance" value={money(remaining)} detail="Balance entered" tone="purple" editor="amount" rawValue={String(remaining)} onSave={value => setRemaining(Number(value))}/>
-    </section>
+    <PaymentPanel project={project}/>
     <div className="lead-project-overview-grid">
       <section className="task-detail-card lead-delivery-plan">
         <div className="lead-project-card-heading"><div><h3 className="delivery-plan-title">Delivery plan</h3></div><span className={`project-record-status ${status.toLowerCase().replace(/ /g, '-')}`}>{status}</span></div>
         <div className="lead-project-dates"><div><small>Start date</small><b>{project.start}</b></div><div><small>Target date</small><b>{project.target}</b></div></div>
         <label className="lead-project-status-control">Update project status<CustomSelect value={status} options={['Planned', 'In progress', 'Completed', 'On hold', 'Cancelled']} onChange={value => onStatusChange(project.name, value)}/></label>
-        <div className="lead-project-scope"><b>Accepted scope</b><p>No accepted scope has been added yet.</p></div>
+        <div className="lead-project-scope"><b>Accepted scope</b><p>{project.scope || 'No accepted scope has been added yet.'}</p>{project.acceptanceSummary && <small>Approval: {project.acceptanceSummary}</small>}{([['Proposal', project.proposalFileId], ['Approval', project.acceptanceFileId]] as const).map(([label, id]) => id && workflowFiles[id] ? <a className="workflow-file-link" key={label} href={workflowFiles[id].data} download={workflowFiles[id].name}>{label}: {workflowFiles[id].name}</a> : null)}</div>
         <button className="lead-project-lead-link" onClick={() => onOpenProject(project.name)}>Lead: {lead.name} <ArrowRight size={13}/></button>
       </section>
       <section className="task-detail-card lead-project-tasks">

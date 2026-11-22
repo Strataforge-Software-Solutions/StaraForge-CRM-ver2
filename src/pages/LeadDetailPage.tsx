@@ -1,3 +1,4 @@
+import LeadNextAction from '../components/LeadNextAction'
 import { ArrowLeft, CalendarDays, Check, CircleDollarSign, Mail, Phone, Tag, Users } from 'lucide-react'
 import type { LeadDirectoryRow } from './LeadsPage'
 import LeadConversionWorkflow from './LeadConversionWorkflow'
@@ -22,7 +23,9 @@ export default function LeadDetailPage({ lead, onBack, onConvert, onLeadStatusCh
   const activeStage = leadStages.indexOf(lead.status)
   const isLost = lead.status === 'Lost'
   const relatedProjects = [...projectDirectory.filter(project => !additionalProjects.some(extra => extra.name === project.name)), ...additionalProjects]
-  const relatedProject = relatedProjects.find(project => project.client === lead.client || project.client === lead.name)
+  const exactProject = relatedProjects.find(project => project.leadId && project.leadId === lead.id)
+  const legacyProjects = relatedProjects.filter(project => !project.leadId && project.client === lead.client)
+  const relatedProject = exactProject ?? (legacyProjects.length === 1 ? legacyProjects[0] : undefined)
   return <div className="directory-page task-detail-page lead-detail-page">
     <button className="task-detail-back" onClick={onBack}><ArrowLeft size={15}/> Back to leads</button>
     {relatedProject && <LeadLinkedProjectOverview lead={lead} project={relatedProject} statusOverride={projectStatusOverrides[relatedProject.name]} onStatusChange={onProjectStatusChange} onViewTasks={onViewTasks} onOpenProject={onOpenProject} onOpenTask={onOpenTask}/>}
@@ -46,6 +49,7 @@ export default function LeadDetailPage({ lead, onBack, onConvert, onLeadStatusCh
           <div className="task-detail-card-heading"><span className="task-detail-icon blue"><Check size={17}/></span><div><h2>Lead progress</h2><p>{isLost ? 'This lead is marked lost' : `Stage ${activeStage + 1} of ${leadStages.length} · ${lead.status}`}</p></div></div>
           {!isLost && <div className="task-progress-steps lead-progress-steps">{leadStages.map((stage, index) => <div className={`task-progress-step ${index < activeStage ? 'complete' : ''} ${index === activeStage ? 'current' : ''}`} key={stage} aria-current={index === activeStage ? 'step' : undefined}><span>{index < activeStage ? <Check size={15}/> : index + 1}</span><b>{stage}</b></div>)}</div>}
     </section>
+    <LeadNextAction lead={lead}/>
     {!isLost && <LeadConversionWorkflow lead={lead} onConvert={onConvert} onLeadStatusChange={onLeadStatusChange}/>}
   </div>
 }

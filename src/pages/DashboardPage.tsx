@@ -1,9 +1,13 @@
+import { useWorkspaceTasks } from '../lib/tasks'
+import { todayKey, reportPeriod } from '../lib/dates'
+import { recordId, overrideFor, related } from '../lib/records'
 import { useEffect, useRef, useState } from 'react'
 import { Activity, ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown, ClipboardList, Layers3, Users } from 'lucide-react'
-import { useDatabaseCollection } from '../lib/database'
+import { useDatabaseCollection, useDatabaseStatus } from '../lib/database'
 import { LeadAvatar, leadDirectory, type LeadDirectoryRow } from './LeadsPage'
-import { projectDirectory, type ProjectDirectoryRow } from './ProjectsPage'
+import { ProjectAvatar, projectDirectory, type ProjectDirectoryRow } from './ProjectsPage'
 import { projectTaskRows, type ProjectTaskRecord } from './ProjectTasksPage'
+import { leadActivityKey, type LeadActivityMap } from '../lib/leadActivity'
 
 type DashboardRange = 'Last 7 days' | 'Last 30 days' | 'Last 90 days' | 'This year'
 const rangeOptions: DashboardRange[] = ['Last 7 days', 'Last 30 days', 'Last 90 days', 'This year']
@@ -12,18 +16,7 @@ type DashboardChartData = {
   sources: { label: string; n: number; color: string }[]
 }
 
-function leadsInRange(leads: LeadDirectoryRow[], range: DashboardRange) {
-  const end = new Date()
-  end.setHours(23, 59, 59, 999)
-  const start = new Date(end)
-  if (range === 'This year') start.setMonth(0, 1)
-  else start.setDate(start.getDate() - (range === 'Last 7 days' ? 6 : range === 'Last 30 days' ? 29 : 89))
-  start.setHours(0, 0, 0, 0)
-  return leads.filter(lead => {
-    const date = new Date(lead.date)
-    return !Number.isNaN(date.getTime()) && date >= start && date <= end
-  })
-}
+function leadsInRange(leads: LeadDirectoryRow[], range: DashboardRange) { return leads.filter(lead => reportPeriod(range).includes(lead.date)) }
 
 function buildDashboardData(leads: LeadDirectoryRow[], range: DashboardRange): DashboardChartData {
   const rangedLeads = leadsInRange(leads, range)
@@ -41,8 +34,8 @@ function buildDashboardData(leads: LeadDirectoryRow[], range: DashboardRange): D
     if (lead.status === 'Won') wonPoints[bucket]++
   })
   leadPoints.forEach((_, index) => {
-    leadPoints[index] = leadPoints.slice(0, index + 1).reduce((total, count) => total + count, 0)
-    wonPoints[index] = wonPoints.slice(0, index + 1).reduce((total, count) => total + count, 0)
+    leadPoints[index] = (index ? leadPoints[index - 1] : 0) + leadPoints[index]
+    wonPoints[index] = (index ? wonPoints[index - 1] : 0) + wonPoints[index]
   })
   const end = new Date()
   const middle = new Date(start.getTime() + (end.getTime() - start.getTime()) / 2)
@@ -139,10 +132,10 @@ function LeadChart({ activeMetric, onMetricHover, data }: { activeMetric: Perfor
         <linearGradient id="orangeFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#ff5a1f" stopOpacity=".14"/><stop offset="1" stopColor="#ff5a1f" stopOpacity="0"/></linearGradient>
       </defs>
       {[22,52,82,112,142].map(y => <line key={y} x1="0" x2="580" y1={y} y2={y} stroke="#e9edf2" strokeDasharray="2 5" />)}
-      <path d={`${wonPath} L580 142 L0 142Z`} fill="url(#blueFill)" pointerEvents="none" />
-      <path d={`${leadPath} L580 142 L0 142Z`} fill="url(#orangeFill)" pointerEvents="none" />
-      <path className="performance-line won-line" d={wonPath} fill="none" stroke="#3880f5" strokeWidth="2.5" pointerEvents="stroke" style={{ opacity: activeMetric && activeMetric !== 'won' ? .32 : 1, strokeWidth: activeMetric === 'won' ? 3.8 : 2.5 }} onPointerEnter={() => onMetricHover('won')} onPointerLeave={() => onMetricHover(null)} />
-      <path className="performance-line leads-line" d={leadPath} fill="none" stroke="#ff5a1f" strokeWidth="2.5" pointerEvents="stroke" style={{ opacity: activeMetric && activeMetric !== 'leads' ? .32 : 1, strokeWidth: activeMetric === 'leads' ? 3.8 : 2.5 }} onPointerEnter={() => onMetricHover('leads')} onPointerLeave={() => onMetricHover(null)} />
+      <path className="performance-area won-area" d={`${wonPath} L580 142 L0 142Z`} fill="url(#blueFill)" pointerEvents="none" />
+      <path className="performance-area leads-area" d={`${leadPath} L580 142 L0 142Z`} fill="url(#orangeFill)" pointerEvents="none" />
+      <path className="performance-line won-line" pathLength={1} d={wonPath} fill="none" stroke="#3880f5" strokeWidth="2.5" pointerEvents="stroke" style={{ opacity: activeMetric && activeMetric !== 'won' ? .32 : 1, strokeWidth: activeMetric === 'won' ? 3.8 : 2.5 }} onPointerEnter={() => onMetricHover('won')} onPointerLeave={() => onMetricHover(null)} />
+      <path className="performance-line leads-line" pathLength={1} d={leadPath} fill="none" stroke="#ff5a1f" strokeWidth="2.5" pointerEvents="stroke" style={{ opacity: activeMetric && activeMetric !== 'leads' ? .32 : 1, strokeWidth: activeMetric === 'leads' ? 3.8 : 2.5 }} onPointerEnter={() => onMetricHover('leads')} onPointerLeave={() => onMetricHover(null)} />
     </svg>
     <div className="chart-x-labels">{frame.labels.map(label => <span key={label}>{label}</span>)}</div>
   </div>
@@ -175,71 +168,92 @@ function SourcesCard({ range, onRangeChange, leads }: { range: DashboardRange; o
   </section>
 }
 
-function ActivityCard() {
+function ActivityCard({ activities, count }: { activities: { id: string; leadName: string; action: string; detail: string; createdAt: string }[]; count: number }) {
+  const activityAge = (createdAt: string) => {
+    const elapsed = Math.max(0, Date.now() - new Date(createdAt).getTime())
+    const minutes = Math.floor(elapsed / 60000)
+    if (minutes < 1) return 'Just now'
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    return days < 7 ? `${days}d ago` : new Date(createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })
+  }
   return <section className="card activity-card">
     <CardTitle icon={Activity} title="Recent activity" action={<button className="text-link">View leads <ArrowUpRight size={13}/></button>} />
-    <div className="dashboard-empty-state">Activity will appear here as you update records.</div>
-    <div className="activity-foot"><span>No recent updates</span><span>Workspace activity</span></div>
-    <div className="activity-pagination"><span>0 updates</span><span>Recent activity</span></div>
+    {activities.length ? <div className="activity-list">{activities.map(item => <div className="activity-row" key={item.id}><span className="activity-icon orange"><Activity size={12}/></span><div className="dashboard-activity-copy"><div className="activity-name">{item.leadName} · {item.action}</div><div className="activity-time">{item.detail} · {activityAge(item.createdAt)}</div></div></div>)}</div> : <div className="dashboard-empty-state">Activity will appear here as you update records.</div>}
+    <div className="activity-foot"><span>{count ? 'Latest updates' : 'No recent updates'}</span><span>Workspace activity</span></div>
+    <div className="activity-pagination"><span>{count} {count === 1 ? 'update' : 'updates'}</span><span>Recent activity</span></div>
   </section>
 }
 
-function LeadsCard({ leads, onOpenLead }: { leads: LeadDirectoryRow[]; onOpenLead: (lead: LeadDirectoryRow) => void }) {
+function LeadsCard({ leads, onOpenLead, onViewAll }: { leads: LeadDirectoryRow[]; onOpenLead: (lead: LeadDirectoryRow) => void; onViewAll: () => void }) {
   return <section className="card leads-card">
-    <CardTitle icon={Users} title="Recent leads" action={<button className="text-link">View all <ArrowRight size={13}/></button>} />
+    <CardTitle icon={Users} title="Recent leads" action={<button className="text-link" onClick={onViewAll}>View all <ArrowRight size={13}/></button>} />
     <div className="lead-table-wrap"><table><thead><tr><th>Name</th><th>Project type</th><th>Source</th><th>Date</th><th>Status</th></tr></thead>
       <tbody>{leads.map(lead => <tr key={lead.name}><td><LeadAvatar lead={lead} className="lead-avatar"/><button type="button" className="dashboard-lead-link" onClick={() => onOpenLead(lead)} aria-label={`Open ${lead.name} lead`}>{lead.name}</button></td><td>{lead.type}</td><td>{lead.source}</td><td>{lead.date}</td><td><span className={`status ${lead.status === 'Won' ? 'won' : ''}`}>{lead.status}</span></td></tr>)}</tbody>
     </table></div>
   </section>
 }
 
-function TasksCard({ tasks }: { tasks: ProjectTaskRecord[] }) {
-  const [done, setDone] = useState<string[]>([])
+function TasksCard({ tasks, onViewAll }: { tasks: ProjectTaskRecord[]; onViewAll: () => void }) {
+  const [, setTasks] = useWorkspaceTasks()
+  const done = tasks.filter(task => task.status === 'Completed').map(task => task.title)
+  const upcoming = tasks.filter(task => task.status !== 'Completed').sort((a, b) => {
+    const aDate = new Date(a.due).getTime()
+    const bDate = new Date(b.due).getTime()
+    return (Number.isNaN(aDate) ? Number.POSITIVE_INFINITY : aDate) - (Number.isNaN(bDate) ? Number.POSITIVE_INFINITY : bDate)
+  }).slice(0, 5)
   return <section className="card tasks-card">
-    <CardTitle icon={ClipboardList} title="Upcoming tasks" action={<button className="text-link">View all <ArrowRight size={13}/></button>} />
-    <div className="task-list">{tasks.filter(task => task.status !== 'Completed').slice(0, 5).map(task => <button className={`task-row ${done.includes(task.title) ? 'complete' : ''}`} key={task.title} onClick={() => setDone(done.includes(task.title) ? done.filter(t => t !== task.title) : [...done, task.title])}>
+    <CardTitle icon={ClipboardList} title="Upcoming project tasks" action={<button className="text-link" type="button" onClick={onViewAll}>View all <ArrowRight size={13}/></button>} />
+    {upcoming.length ? <div className="task-list">{upcoming.map(task => <button className={`task-row ${done.includes(task.title) ? 'complete' : ''}`} key={`${task.project}:${task.title}`} onClick={() => setTasks(current => current.map(item => recordId(item) === recordId(task) ? { ...item, status: 'Completed' } : item))}>
       <span className="task-check">{done.includes(task.title) && <Check size={11}/>}</span><span className="task-copy"><span>{task.title}</span><small className="task-project-context">Project: {task.project}</small><small>{task.due}</small>{task.overdue && <em>Assign before completing →</em>}</span>
-    </button>)}</div>
+    </button>)}</div> : <div className="task-list-empty"><ClipboardList size={20}/><span>No upcoming project tasks yet.</span><small>Tasks added to projects will appear here.</small></div>}
   </section>
 }
 
-function ProjectsCard({ projects }: { projects: ProjectDirectoryRow[] }) {
+function ProjectsCard({ projects, onViewAll }: { projects: ProjectDirectoryRow[]; onViewAll: () => void }) {
   return <section className="card projects-card">
-    <CardTitle icon={Layers3} title="Project status" action={<button className="text-link">View all <ArrowRight size={13}/></button>} />
-    <div className="project-list">{projects.map(({ name, target, status, tone }) => <div className="project-row" key={name}>
-      <div className={`project-icon ${tone}`}><Layers3 size={15}/></div><div className="project-copy"><span>{name}</span><small>Target {target}</small></div><span className={`project-status ${tone}`}>{status}</span>
+    <CardTitle icon={Layers3} title="Project status" action={<button className="text-link" onClick={onViewAll}>View all <ArrowRight size={13}/></button>} />
+    <div className="project-list">{projects.map(project => <div className="project-row" key={project.name}>
+      <ProjectAvatar project={project} className="project-icon"/><div className="project-copy"><span>{project.name}</span><small>Target {project.target}</small></div><span className={`project-status ${project.tone}`}>{project.status}</span>
     </div>)}</div>
   </section>
 }
 
 
-export default function DashboardPage({ onOpenLead }: { onOpenLead: (lead: LeadDirectoryRow) => void }) {
+export default function DashboardPage({ onOpenLead, onViewTasks, onNavigate }: { onOpenLead: (lead: LeadDirectoryRow) => void; onViewTasks: () => void; onNavigate: (page: string) => void }) {
+  const database = useDatabaseStatus()
   const [performanceRange, setPerformanceRange] = useState<DashboardRange>('Last 30 days')
   const [sourcesRange, setSourcesRange] = useState<DashboardRange>('Last 30 days')
   const [savedLeads] = useDatabaseCollection('leads', leadDirectory)
-  const [savedTasks] = useDatabaseCollection('tasks', projectTaskRows)
+  const [savedTasks] = useWorkspaceTasks()
   const [additionalProjects] = useDatabaseCollection<ProjectDirectoryRow[]>('projects', [])
   const [projectOverrides] = useDatabaseCollection<Record<string, Partial<ProjectDirectoryRow>>>('projectOverrides', {})
   const [deletedProjects] = useDatabaseCollection<string[]>('deletedProjects', [])
   const [projectStatusOverrides] = useDatabaseCollection<Record<string, string>>('projectStatusOverrides', {})
+  const [leadActivityByLead] = useDatabaseCollection<LeadActivityMap>('leadActivities', {})
+  const leadNames = new Map(savedLeads.map(lead => [leadActivityKey(lead.name), lead.name]))
+  const recentLeadActivities = Object.entries(leadActivityByLead).flatMap(([key, entries]) => entries.map(entry => ({ ...entry, leadName: leadNames.get(key) ?? key }))).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   const dashboardProjects = [...projectDirectory.filter(project => !additionalProjects.some(extra => extra.name === project.name)), ...additionalProjects]
-    .map(project => ({ ...project, ...projectOverrides[project.name], status: projectStatusOverrides[project.name] ?? projectOverrides[project.name]?.status ?? project.status }))
-    .filter(project => !deletedProjects.includes(project.name)).slice(0, 3)
+    .map(project => ({ ...project, ...overrideFor(projectOverrides, project), status: overrideFor(projectStatusOverrides, project) ?? overrideFor(projectOverrides, project)?.status ?? project.status }))
+    .filter(project => !(deletedProjects.includes(recordId(project)) || deletedProjects.includes(project.legacyName || project.name)))
   const wonCount = savedLeads.filter(lead => lead.status === 'Won').length
   const pendingTasks = savedTasks.filter(task => task.status !== 'Completed')
   const today = new Date()
   return <div className="dashboard-content">
-        <div className="welcome-row"><div><div className="eyebrow">FOUNDER WORKSPACE</div><h1>Workspace overview</h1><p>{savedLeads.length} leads · {pendingTasks.length} active tasks · {dashboardProjects.length} ongoing projects</p></div>
+        <div className="welcome-row"><div><div className="eyebrow">FOUNDER WORKSPACE</div><h1>Overview</h1><p>{savedLeads.length} leads · {pendingTasks.length} active tasks · {dashboardProjects.length} ongoing projects</p></div>
           <div className="date-card"><div className="date-icon"><CalendarDays size={17}/></div><div><span>TODAY · MANILA</span><b>{today.toLocaleDateString('en-US', { weekday: 'long' })}</b><small>{today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</small></div></div>
         </div>
+        <section className="crm-panel crm-attention"><span className="attention-icon"><CalendarDays size={19}/></span><div className="attention-content"><h2>What needs attention today?</h2><p>Keep conversations moving with a clear next step.</p><div className="attention-counts"><span><b>{savedLeads.filter(lead => lead.followUpDate && lead.followUpDate <= todayKey() && !['Won', 'Lost'].includes(lead.status)).length}</b> follow-ups due</span><span><b>{savedLeads.filter(lead => !lead.nextAction && !['Won', 'Lost'].includes(lead.status)).length}</b> without a next action</span></div></div><button onClick={() => onNavigate('Follow-ups')}>Open follow-ups →</button></section>
         <section className="metrics-card">
           <Metric icon={Users} label="Total Leads" value={String(savedLeads.length)} detail="All active inquiries" tone="orange" />
           <Metric icon={Layers3} label="Active Projects" value={String(dashboardProjects.filter(project => project.status !== 'Completed' && project.status !== 'Cancelled').length)} detail="Planned or in delivery" tone="blue" />
-          <Metric icon={ClipboardList} label="Pending Tasks" value={String(pendingTasks.length)} detail={`${pendingTasks.filter(task => task.overdue).length} overdue`} tone="purple" />
+          <Metric icon={ClipboardList} label="Pending Tasks" value={String(pendingTasks.length)} detail={`${pendingTasks.filter(task => task.due && new Date(task.due).getTime() < new Date(`${todayKey()}T00:00:00`).getTime()).length} overdue`} tone="purple" />
           <Metric icon={Activity} label="Conversion Rate" value={`${savedLeads.length ? Math.round((wonCount / savedLeads.length) * 100) : 0}%`} detail={`${wonCount} won from ${savedLeads.length} total leads`} tone="green" />
         </section>
-        <div className="dashboard-grid top-grid"><PerformanceCard range={performanceRange} onRangeChange={setPerformanceRange} leads={savedLeads}/><SourcesCard range={sourcesRange} onRangeChange={setSourcesRange} leads={savedLeads}/><ActivityCard/></div>
-        <div className="dashboard-grid bottom-grid"><LeadsCard leads={savedLeads} onOpenLead={onOpenLead}/><TasksCard tasks={savedTasks}/><ProjectsCard projects={dashboardProjects}/></div>
-        <footer className="page-footer"><span>STRATAFORGE CRM <i>•</i> FOUNDER WORKSPACE</span><span>All data is up to date <b>·</b> Last synced just now</span></footer>
+        <div className="dashboard-grid top-grid"><PerformanceCard range={performanceRange} onRangeChange={setPerformanceRange} leads={savedLeads}/><SourcesCard range={sourcesRange} onRangeChange={setSourcesRange} leads={savedLeads}/><ActivityCard activities={recentLeadActivities.slice(0, 5)} count={recentLeadActivities.length}/></div>
+        <div className="dashboard-grid bottom-grid"><LeadsCard leads={savedLeads.slice(-5).reverse()} onOpenLead={onOpenLead} onViewAll={() => onNavigate('Leads')}/><TasksCard tasks={savedTasks} onViewAll={onViewTasks}/><ProjectsCard projects={dashboardProjects.slice(0, 3)} onViewAll={() => onNavigate('Projects')}/></div>
+        <footer className="page-footer"><span>STRATAFORGE CRM <i>•</i> FOUNDER WORKSPACE</span><span>{database.status === 'connected' ? 'Workspace connected' : database.status === 'error' ? 'Changes need attention' : 'Connecting…'}</span></footer>
       </div>
 }

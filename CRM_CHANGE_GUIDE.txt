@@ -1,0 +1,56 @@
+STRATAFORGE CRM — CHANGE GUIDE
+Implemented November 23, 2026
+
+DAILY SALES WORK
+Open Follow-ups in the sidebar. Views include Due / overdue, My leads, No next action, Waiting for client, and All open. Search and save named views for reuse. My leads matches the responsible-person name to your account name.
+Open a lead's full workflow to save its responsible person, next action and follow-up date. The lead edit dialog also includes these fields and a lost reason. A reason is required before moving a lead to Lost.
+The dashboard highlights due follow-ups and opportunities without a next action. Notifications include due lead follow-ups.
+
+LEADS AND IMPORTS
+The Leads directory has a CSV import preview. Supported columns: name, company, email, phone, source, notes. Up to 500 rows / 1 MB. Invalid rows and possible duplicates are shown and skipped. Import requires a separate confirmation click after preview.
+Lead Pipeline offers a stage filter and a Move to selector on lead cards, including on touch devices. Proposal, acceptance and deposit rules are checked on the server as well as in the UI. Discovery no longer requires a proposal draft.
+
+CUSTOMERS
+Open a client's full record for Customer history and contacts. Add multiple contacts and log calls, meetings, emails or notes. Related opportunities and recorded changes appear together. Logging an email records a conversation; it does not send email.
+Client drawer notes and tags now persist.
+
+PAYMENTS
+Project payment panels show agreed value, received total and calculated remaining balance (or credit). Legacy lead deposits are included when their project can be identified. Record additional receipts with a date and reference. Add payment milestones as fixed amounts or percentages of agreed value, and allocate new receipts to milestones.
+Recorded receipts cannot be edited or deleted through the new API. Only admins/owners may record financial receipts and schedules. No online payments are collected.
+New converted projects carry explicit lead/workflow links. Repeat conversion attempts use the same project identity.
+
+REPORTS AND CALENDAR
+Reports use actual date ranges in Manila and exclude future-dated leads. Cash received reads recorded deposits and receipts, with PHP and USD kept separate. Reports also show lost reasons and newly recorded project/task activity.
+Calendar Today uses the current Manila date. Calendar includes task deadlines, lead follow-up dates and payment milestones. Manually created calendar events can be edited; linked events direct you to their source page.
+
+RELIABILITY AND UI
+Leads, clients and projects have functional pagination. Project target dates sort chronologically and recently updated views use timestamps. Dashboard View all buttons navigate, task completion persists, and project totals use all records instead of a three-item preview. The cumulative lead chart calculation was corrected.
+Failed saves retain drafts in the current session and show Retry save, Download unsaved draft, and Reload saved version. Reload saved version asks you to confirm discarding pending changes. Download the draft first if needed. Do not close the browser with pending changes unless you have saved/downloaded them.
+The app refreshes loaded collections every 30 seconds while visible and on window focus. It does not claim that unsaved changes are synchronized.
+
+DATA COMPATIBILITY AND OPERATIONS
+Existing records receive stable identifiers; original names/workflow keys are retained for legacy links. Unique legacy client/project relationships are resolved automatically. Ambiguous old relationships are not automatically assigned to a guessed customer/project.
+The existing collection database is retained. Updates merge by record identity and field, with database timestamp checks preventing concurrent overwrites. Conflicting changes are rejected for review. This is not a migration to separate SQL tables per entity.
+The server stores collection data and its recent change history together in a versioned envelope. Deploy frontend and API together; old clients are asked to reload before saving. Historical changes before this release are not reconstructed. Server history currently retains the latest 1,000 changes per audited collection.
+Do not replace only the frontend while keeping the old data API. Existing Supabase tables and updated_at trigger are required, as before. No production deployment or destructive database migration was performed.
+
+VERIFICATION
+Frontend production build passed.
+The updated CRM API passed a separate TypeScript check.
+18 regression checks passed using a mocked database transport: independent/concurrent edits, conflicting edits, deletion conflicts, JSON ordering, legacy identity preservation, CSV quoting/errors, date boundaries, authorization, workflow gates, immutable receipts and actor history.
+Read-only browser inspection confirmed the Follow-ups page and current report dates. Live customer records were not modified for tests. Full authenticated multi-user save testing and a complete mobile interaction pass remain deployment acceptance checks; mocked tests do not replace those checks.
+
+SUGGESTED FIRST WALKTHROUGH
+1. Open Follow-ups and choose No next action.
+2. Open a lead and enter an owner, next action and follow-up date.
+3. Check the Follow-ups queue and Calendar.
+4. Open a client full record to review contacts and log a conversation.
+5. Review an existing project's Payments panel before recording any real receipt.
+6. Review Reports and Audit history.
+
+NOVEMBER 23 FOLLOW-UP — UI, HANDOFF, AND REAL CONTROLS
+Shared card, control, and focus styling is in src/ui-polish.css. Dialog entry and selected interactions use brief motion; reduced-motion preferences disable those transitions. Create-lead, create-project, and payment dates now use the shared calendar.
+Proposal versions now require written scope and can include one PDF/image attachment (up to 1 MB). Signed-file acceptance requires an uploaded signed file. Files are kept in a workspace-scoped workflowFiles collection, separate from the versioned activity history; the collection has a roughly 3 MB total cap. Converted projects copy accepted scope, approval summary, contacts, dates, and document references. The project drawer and linked-project overview show the handoff.
+Settings now keeps edits as a local draft until Save changes succeeds. Workspace activity and task-reminder switches control in-app notifications; the unused product-announcement switch was removed. Regional preferences now accurately show the current English/Manila workspace standard rather than presenting unsupported selections. The board's inactive options button was removed. Security shows the current session and a working Sign out action; other-device history is still not available. Direct project creation now saves the selected project type and entered scope.
+Google sign-in remains a visible unconfigured option. It requires an OAuth provider setup and server flow; this change does not claim it works. No real account records, payment records, or production deployment were modified for verification.
+Latest verification: the frontend production build passed after the final Settings UI adjustment, and the CRM API TypeScript check passed after the workflow changes. All 22 regression checks passed after the API workflow validation; the only subsequent code change was the Settings UI adjustment.

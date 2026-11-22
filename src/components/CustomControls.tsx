@@ -95,8 +95,16 @@ export function CustomDatePicker({ value, onChange, ariaLabel = 'Choose date' }:
     return day
   })
   const displayDate = parsedValue?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) ?? 'Select date'
+  const today = dateKey(new Date())
 
-  return <div className="custom-date-picker" ref={containerRef}>
+  return <div className="custom-date-picker" ref={containerRef} onKeyDown={event => {
+    if (event.key === 'Escape' && open) {
+      event.preventDefault()
+      event.stopPropagation()
+      setOpen(false)
+      containerRef.current?.querySelector<HTMLButtonElement>('.custom-date-trigger')?.focus()
+    }
+  }}>
     <button type="button" className="custom-date-trigger" aria-label={ariaLabel} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(current => !current)}>
       <span>{displayDate}</span><CalendarDays size={15}/>
     </button>
@@ -106,9 +114,10 @@ export function CustomDatePicker({ value, onChange, ariaLabel = 'Choose date' }:
         {weekdayNames.map(day => <span className="custom-date-weekday" role="columnheader" key={day}>{day}</span>)}
         {days.map(day => {
           const key = dateKey(day)
-          return <button key={key} type="button" role="gridcell" aria-label={day.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} aria-selected={value === key} className={`${day.getMonth() === month.getMonth() ? '' : 'outside'} ${value === key ? 'selected' : ''}`} onClick={() => { onChange(key); setOpen(false) }}>{day.getDate()}</button>
+          return <button key={key} type="button" role="gridcell" aria-label={day.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} aria-selected={value === key} className={`${day.getMonth() === month.getMonth() ? '' : 'outside'} ${value === key ? 'selected' : ''} ${today === key ? 'today' : ''}`} onClick={() => { onChange(key); setOpen(false) }}>{day.getDate()}</button>
         })}
       </div>
+      <div className="custom-date-footer"><span>{value ? parsedValue?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'No date selected'}</span><button type="button" onClick={() => { onChange(today); setMonth(new Date()); setOpen(false) }}>Today</button></div>
     </div>}
   </div>
 }

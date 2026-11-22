@@ -1,0 +1,77 @@
+/* Shared type scale. Keep sizes independent of desktop viewport width. */
+:root {
+  --text-12: .75rem;
+  --text-14: .875rem;
+  --text-16: 1rem;
+  --text-18: 1.125rem;
+  --text-24: 1.5rem;
+  --text-28: 1.75rem;
+  --text-32: 2rem;
+  --text-40: 2.5rem;
+  --text-48: 3rem;
+  --font-display: 'Inter', sans-serif;
+}
+body { font-size: var(--text-14); line-height: 1.5; }
+button, input, select, textarea { font-family: var(--font-body); }
+#root :is(button, input, select, textarea) { line-height: 1.4; }
+#root :is(h1, h2, h3, h4) { font-family: var(--font-body); font-weight: 600; text-wrap: balance; }
+#root h1 { font-size: var(--text-28); line-height: 1.2; letter-spacing: -.025em; }
+#root h2 { font-size: var(--text-18); line-height: 1.35; letter-spacing: -.015em; }
+#root h3 { font-size: var(--text-16); line-height: 1.4; letter-spacing: -.01em; }
+#root h4 { font-size: var(--text-14); line-height: 1.4; }
+#root :is(.modal, .admin-invite-modal, .ticket-drawer, .client-drawer) h2 { font-size: var(--text-24); }
+#root :is(.directory-heading, .welcome-row, .board-heading-row, .reports-heading) p { font-size: var(--text-14); line-height: 1.55; margin-top: 8px; }
+#root :is(.directory-eyebrow, .eyebrow, .reports-eyebrow, .breadcrumb, .nav-label, .workflow-step-kicker) { font-size: var(--text-12); line-height: 1.4; letter-spacing: .065em; font-weight: 600; }
+#root :is(.card-title strong, .report-card-head h2, .kanban-column-head strong) { font-size: var(--text-14); line-height: 1.4; font-weight: 600; }
+#root :is(.metric-value, .directory-stat b, .report-metric b, .chart-summary b, .source-total b, .crm-summary b) { font-size: var(--text-24); line-height: 1.2; font-weight: 600; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+#root :is(.metric-label, .metric-detail, .muted, .report-note, .record-edit-note, .record-edit-photo-help, .page-footer, .reports-footer, .directory-panel-foot, .source-row, .source-row b, .source-row small, .source-chips span, .source-chips b, .source-insight, .source-insight strong) { font-size: var(--text-12); line-height: 1.5; }
+#root :is(.field-label, .record-edit-field, .workflow-form label, .crm-form label, .account-settings-fields label) { font-size: var(--text-12); line-height: 1.5; font-weight: 500; }
+#root :is(input, select, textarea, .custom-select-trigger, .custom-date-trigger) { font-size: var(--text-14); }
+#root :is(input, textarea)::placeholder { font-size: inherit; }
+#root :is(.modal, .admin-invite-modal, .crm-panel, .workflow-form, .account-settings-body) :is(input:not([type=checkbox]):not([type=radio]):not([type=file]), select, .custom-select-trigger, .custom-date-trigger) { min-height: 40px; }
+#root :is(.modal, .admin-invite-modal, .client-drawer, .ticket-drawer, .crm-panel) p { line-height: 1.6; }
+#root :is(.modal, .admin-invite-modal) { max-height: calc(100dvh - 32px); overflow-y: auto; }
+#root :is(.modal, .admin-invite-modal, .crm-panel, .crm-form) button { font-size: var(--text-14); }
+#root :is(.modal-head, .record-edit-section-heading, .create-record-heading) p { font-size: var(--text-14); line-height: 1.55; }
+#root :is(.record-edit-fields, .create-fields, .workflow-form) { row-gap: 16px; }
+#root :is(.directory-add, .modal-submit, .record-dialog-submit, .record-dialog-cancel, .workflow-primary-button, .workflow-quiet-button, .directory-tabs button, .admin-cancel, .text-link, .range-select, .board-tool-button, .settings-save, .reports-export) { font-size: var(--text-14); font-weight: 500; min-height: 36px; height: auto; }
+#root :is(.nav-item, .sidebar-logout) { font-size: var(--text-14); min-height: 36px; height: auto; }
+#root :is(.card-title, .report-card-head, .kanban-column-head) { min-height: 32px; height: auto; }
+#root :is(.chart-summary, .source-total) { min-height: 44px; height: auto; }
+#root .metric { height: auto; min-height: 86px; }
+#root .metric-detail { margin-top: 4px; }
+#root .source-row { min-height: 28px; height: auto; }
+#root .source-chips span { min-height: 26px; height: auto; }
+#root .source-insight { white-space: normal; flex-wrap: wrap; gap: 8px; }
+#root .chart-wrap { padding-bottom: 24px; padding-left: 30px; }
+#root :is(.chart-y-labels, .chart-x-labels) { font-size: var(--text-12); }
+#root .chart-x-labels { left: 30px; }
+#root :is(.board-toolbar, .directory-toolbar) { height: auto; min-height: 56px; flex-wrap: wrap; gap: 12px; padding-top: 8px; padding-bottom: 8px; }
+#root :is(.board-search, .project-filter, .range-select) { min-height: 36px; height: auto; }
+#root :is(.directory-table, .admin-table, .lead-table-wrap table) th { font-size: var(--text-12); line-height: 1.4; font-weight: 600; padding-top: 12px; padding-bottom: 12px; }
+#root :is(.directory-table, .admin-table, .lead-table-wrap table) td { font-size: var(--text-14); line-height: 1.5; padding-top: 12px; padding-bottom: 12px; }
+#root :is(.person-cell, .admin-member, .primary-contact) b { font-size: var(--text-14); font-weight: 600; }
+#root :is(.person-cell, .admin-member, .primary-contact) small { font-size: var(--text-12); line-height: 1.5; }
+#root :is(.status, .record-status, .project-record-status, .admin-status, .workflow-state, .type-chip, .project-status, .priority) { font-size: var(--text-12); line-height: 1.35; height: auto; padding-top: 3px; padding-bottom: 3px; }
+#root :is(.ticket-card h3, .lead-board-card-title h3) { font-size: var(--text-14); line-height: 1.4; }
+#root :is(.ticket-card, .lead-stage-help-popover) { overflow-wrap: anywhere; }
+#root .lead-stage-help-popover { width: 260px; font-size: var(--text-12); }
+#root .brand-sub { font-size: .625rem; }
+#root .brand-name { font-size: var(--text-14); }
+#root :is(.mobile-bottom-item span, .mobile-bottom-create small) { font-size: .6875rem; }
+#root :is(.search-box input, .search-box button) { font-size: var(--text-14); }
+#root .lead-kanban-board { grid-template-columns: repeat(7, minmax(250px, 1fr)); }
+#root .lead-kanban-board.single-stage { grid-template-columns: minmax(250px, 440px); }
+@media (max-width: 700px) {
+  #root h1 { font-size: var(--text-24); }
+  #root :is(.modal, .admin-invite-modal, .ticket-drawer, .client-drawer) h2 { font-size: var(--text-18); }
+  #root :is(input, select, textarea, .custom-select-trigger, .custom-date-trigger) { font-size: var(--text-16); }
+  #root :is(.directory-add, .record-dialog-submit, .record-dialog-cancel, .modal-submit, .admin-cancel) { min-height: 44px; }
+  #root .metric { min-height: 94px; align-items: flex-start; }
+  #root .metric-value { font-size: var(--text-24); }
+  #root .lead-kanban-board { grid-template-columns: repeat(7, minmax(260px, 86vw)); }
+  #root .lead-kanban-board.single-stage { grid-template-columns: minmax(0, 1fr); }
+  #root .topbar .search-box button { font-size: var(--text-12); padding-inline: 6px; }
+  #root .topbar .search-box input { font-size: var(--text-16); }
+  #root .directory-heading .directory-add { margin-top: 0; }
+}

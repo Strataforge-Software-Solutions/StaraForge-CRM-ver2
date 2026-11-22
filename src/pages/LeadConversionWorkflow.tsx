@@ -1,33 +1,49 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { AlertCircle, ArrowRight, BriefcaseBusiness, CalendarDays, Check, CheckCircle2, CircleDollarSign, CreditCard, FileText, Plus, ReceiptText } from 'lucide-react'
 import { CustomDatePicker, CustomSelect } from '../components/CustomControls'
-import { useDatabaseCollection } from '../lib/database'
+import { useDatabaseCollection, flushDatabaseWrites, updateDatabaseCollection } from '../lib/database'
 import { showWorkspaceToast } from '../lib/workspaceToast'
 import type { LeadDirectoryRow } from './LeadsPage'
 import type { ProjectDirectoryRow } from './ProjectsPage'
 
-type Proposal = { id: number; name: string; amount: number; created: string; status: 'Draft' | 'Sent' | 'Accepted' }
-type Acceptance = { proposalId: number; method: string; evidence: string; note: string; date: string }
+type Proposal = { id: number; name: string; amount: number; scope?: string; fileId?: string; created: string; status: 'Draft' | 'Sent' | 'Accepted' }
+type Acceptance = { proposalId: number; method: string; evidence: string; note: string; fileId?: string; date: string }
 type Deposit = { amount: number; date: string; note: string }
 type LeadWorkflowData = { proposals: Proposal[]; selectedProposal: number | null; acceptance: Acceptance | null; deposits: Deposit[]; createdProject: boolean; projectName?: string; clientType?: string; startDate?: string; targetDate?: string }
 const emptyWorkflow: LeadWorkflowData = { proposals: [], selectedProposal: null, acceptance: null, deposits: [], createdProject: false }
 const emptyWorkflows: Record<string, LeadWorkflowData> = {}
+type WorkflowFile = { name: string; mime: string; data: string }
+const allowedFiles = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+async function saveWorkflowFile(file: File): Promise<string> {
+  if (!allowedFiles.includes(file.type) || file.size < 1 || file.size > 1_000_000) throw new Error('Choose a PDF, JPG, PNG, or WebP file up to 1 MB.')
+  const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('The file could not be read.')); reader.readAsDataURL(file) })
+  const id = crypto.randomUUID()
+  await updateDatabaseCollection<Record<string, WorkflowFile>>('workflowFiles', {}, current => ({ ...current, [id]: { name: file.name.slice(0, 120), mime: file.type, data } }))
+  return id
+}
 
 function workflowKeyFor(lead: LeadDirectoryRow) {
-  return lead.email.trim().toLowerCase() || `${lead.name.trim().toLowerCase()}::${lead.client.trim().toLowerCase()}`
+  return lead.workflowKey || lead.id || lead.email.trim().toLowerCase() || `${lead.name.trim().toLowerCase()}::${lead.client.trim().toLowerCase()}`
 }
 
 export default function LeadConversionWorkflow({ lead, onConvert, onLeadStatusChange }: { lead: LeadDirectoryRow; onConvert: (project: ProjectDirectoryRow) => void; onLeadStatusChange: (status: string) => void }) {
   const [workflows, setWorkflows] = useDatabaseCollection<Record<string, LeadWorkflowData>>('leadWorkflows', emptyWorkflows)
   const workflowKey = workflowKeyFor(lead)
   const workflow = workflows[workflowKey] ?? emptyWorkflow
-  const { proposals, selectedProposal, acceptance, deposits, createdProject } = workflow
+  const [workflowFiles] = useDatabaseCollection<Record<string, WorkflowFile>>('workflowFiles', {})
+  const { proposals, selectedProposal, acceptance, deposits } = workflow
+  const [linkedProjects] = useDatabaseCollection<ProjectDirectoryRow[]>('projects', [])
+  const createdProject = workflow.createdProject || linkedProjects.some(project => project.workflowKey === workflowKey)
   const updateWorkflow = (patch: Partial<LeadWorkflowData>) => setWorkflows(current => ({ ...current, [workflowKey]: { ...(current[workflowKey] ?? emptyWorkflow), ...patch } }))
   const [showProposalForm, setShowProposalForm] = useState(false)
   const [showAcceptanceForm, setShowAcceptanceForm] = useState(false)
   const [showDepositForm, setShowDepositForm] = useState(false)
   const [proposalName, setProposalName] = useState('')
   const [proposalAmount, setProposalAmount] = useState('')
+  const [proposalScope, setProposalScope] = useState('')
+  const [proposalFile, setProposalFile] = useState<File | null>(null)
+  const [acceptanceFile, setAcceptanceFile] = useState<File | null>(null)
+  const [workflowError, setWorkflowError] = useState('')
   const [evidenceMethod, setEvidenceMethod] = useState('Approval message')
   const [evidence, setEvidence] = useState('')
   const [acceptanceNote, setAcceptanceNote] = useState('')
@@ -49,40 +65,51 @@ export default function LeadConversionWorkflow({ lead, onConvert, onLeadStatusCh
   const progressDescription = progress < 0 ? 'No proposal has been created yet.' : `${progressLabels[Math.min(progress, 3)]} · ${currentProposal?.name ?? 'Proposal'}`
   const versions = useMemo(() => [...proposals].sort((a, b) => b.id - a.id), [proposals])
 
-  const createProposal = (event: FormEvent<HTMLFormElement>) => {
+  const createProposal = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const amount = Number(proposalAmount)
-    if (!proposalName.trim() || !Number.isFinite(amount) || amount <= 0) return
-    const proposal = { id: Date.now(), name: proposalName.trim(), amount, created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), status: 'Draft' as const }
-    updateWorkflow({ proposals: [...proposals, proposal], selectedProposal: proposal.id })
-    setProposalName('')
-    setProposalAmount('')
-    setShowProposalForm(false)
-    if (lead.status !== 'Proposal sent' && !proposals.some(item => item.status === 'Sent' || item.status === 'Accepted')) onLeadStatusChange('Discovery')
-    showWorkspaceToast('Proposal draft created.')
+    if (!proposalName.trim() || !proposalScope.trim() || !Number.isFinite(amount) || amount <= 0) return
+    setWorkflowError('')
+    try {
+      const fileId = proposalFile ? await saveWorkflowFile(proposalFile) : undefined
+      const proposal: Proposal = { id: Date.now(), name: proposalName.trim(), amount, scope: proposalScope.trim(), fileId, created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), status: 'Draft' }
+      updateWorkflow({ proposals: [...proposals, proposal], selectedProposal: proposal.id })
+      await flushDatabaseWrites()
+      setProposalName(''); setProposalAmount(''); setProposalScope(''); setProposalFile(null); setShowProposalForm(false)
+      if (lead.status !== 'Proposal sent' && !proposals.some(item => item.status === 'Sent' || item.status === 'Accepted')) onLeadStatusChange('Discovery')
+      showWorkspaceToast('Proposal draft created.')
+    } catch (cause) { setWorkflowError(cause instanceof Error ? cause.message : 'Proposal could not be saved.') }
   }
 
-  const sendProposal = (proposal: Proposal) => {
+  const sendProposal = async (proposal: Proposal) => {
     updateWorkflow({ proposals: proposals.map(item => item.id === proposal.id ? { ...item, status: 'Sent' } : item), selectedProposal: proposal.id })
+    await flushDatabaseWrites()
     onLeadStatusChange('Proposal sent')
     showWorkspaceToast('Proposal marked as sent.')
   }
 
-  const recordAcceptance = (event: FormEvent<HTMLFormElement>) => {
+  const recordAcceptance = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!currentProposal || !evidence.trim() || !acceptanceNote.trim()) return
-    const nextAcceptance = { proposalId: currentProposal.id, method: evidenceMethod, evidence: evidence.trim(), note: acceptanceNote.trim(), date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
-    updateWorkflow({ acceptance: nextAcceptance, proposals: proposals.map(item => item.id === currentProposal.id ? { ...item, status: 'Accepted' } : item) })
-    onLeadStatusChange('Awaiting deposit')
-    setShowAcceptanceForm(false)
-    showWorkspaceToast('Client acceptance recorded.')
+    setWorkflowError('')
+    try {
+      if (evidenceMethod === 'Signed file' && !acceptanceFile) throw new Error('Attach the signed approval file.')
+      const fileId = acceptanceFile ? await saveWorkflowFile(acceptanceFile) : undefined
+      const nextAcceptance: Acceptance = { proposalId: currentProposal.id, method: evidenceMethod, evidence: evidence.trim(), note: acceptanceNote.trim(), fileId, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
+      updateWorkflow({ acceptance: nextAcceptance, proposals: proposals.map(item => item.id === currentProposal.id ? { ...item, status: 'Accepted' } : item) })
+      await flushDatabaseWrites()
+      onLeadStatusChange('Awaiting deposit')
+      setShowAcceptanceForm(false); setAcceptanceFile(null)
+      showWorkspaceToast('Client acceptance recorded.')
+    } catch (cause) { setWorkflowError(cause instanceof Error ? cause.message : 'Acceptance could not be saved.') }
   }
 
-  const recordDeposit = (event: FormEvent<HTMLFormElement>) => {
+  const recordDeposit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const amount = Number(depositAmount)
     if (!accepted || !Number.isFinite(amount) || amount <= 0 || !depositDate) return
     updateWorkflow({ deposits: [...deposits, { amount, date: depositDate, note: depositNote.trim() }] })
+    await flushDatabaseWrites()
     onLeadStatusChange('Won')
     setDepositAmount('')
     setDepositNote('')
@@ -90,20 +117,21 @@ export default function LeadConversionWorkflow({ lead, onConvert, onLeadStatusCh
     showWorkspaceToast('Deposit record saved.')
   }
 
-  const createProject = (event: FormEvent<HTMLFormElement>) => {
+  const createProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!accepted || deposited <= 0 || !projectName.trim()) return
     const initials = lead.client.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase()
     const project: ProjectDirectoryRow = {
-      name: projectName.trim(), client: lead.client, initials, type: lead.type,
+      id: `project:${lead.id || workflowKey}`, leadId: lead.id, clientId: lead.clientId, workflowKey, name: projectName.trim(), client: lead.client, initials, type: lead.type, primaryContact: lead.name, contactEmail: lead.email, contactPhone: lead.phone,
       start: startDate ? new Date(`${startDate}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set',
       target: targetDate ? new Date(`${targetDate}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set',
-      value: formatMoney(currentProposal?.amount ?? 0),
+      value: formatMoney(currentProposal?.amount ?? 0), scope: currentProposal?.scope || '', proposalFileId: currentProposal?.fileId, acceptanceFileId: acceptance?.fileId, acceptanceSummary: acceptance ? `${acceptance.method}: ${acceptance.evidence} · ${acceptance.note}` : '',
       status: 'Planned', tone: lead.tone,
     }
-    updateWorkflow({ createdProject: true })
-    showWorkspaceToast('Project setup is complete.')
     onConvert(project)
+    await flushDatabaseWrites()
+    updateWorkflow({ createdProject: true, projectName: project.name })
+    showWorkspaceToast('Project setup is complete.')
   }
 
   return <div className="lead-conversion-workflow">
@@ -117,15 +145,16 @@ export default function LeadConversionWorkflow({ lead, onConvert, onLeadStatusCh
 
       <section className="task-detail-card proposal-versions-panel">
         <div className="workflow-section-heading"><div><span className="workflow-step-kicker">VERSION HISTORY</span><h2>Proposal versions</h2><p>Create priced versions, then record when a proposal is sent or accepted.</p></div><button className="workflow-quiet-button" onClick={() => setShowProposalForm(value => !value)}><Plus size={14}/>{showProposalForm ? 'Cancel' : 'Create version'}</button></div>
-        {showProposalForm && <form className="workflow-form proposal-create-form" onSubmit={createProposal}><label>Version name<input required value={proposalName} onChange={event => setProposalName(event.target.value)} placeholder="e.g. Website build"/></label><label>Proposal amount<input required min="0.01" step="0.01" type="number" value={proposalAmount} onChange={event => setProposalAmount(event.target.value)} placeholder="0.00"/></label><button className="workflow-primary-button" type="submit">Save draft</button></form>}
+        {showProposalForm && <form className="workflow-form proposal-create-form" onSubmit={createProposal}><label>Version name<input required value={proposalName} onChange={event => setProposalName(event.target.value)} placeholder="e.g. Website build"/></label><label>Proposal amount<input required min="0.01" step="0.01" type="number" value={proposalAmount} onChange={event => setProposalAmount(event.target.value)} placeholder="0.00"/></label><label className="wide">Proposed scope<textarea required rows={3} value={proposalScope} onChange={event => setProposalScope(event.target.value)} placeholder="Describe the deliverables and boundaries of this version"/></label><label className="wide">Proposal document <small>Optional · PDF or image, up to 1 MB</small><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={event => setProposalFile(event.target.files?.[0] ?? null)}/></label><button className="workflow-primary-button" type="submit">Save draft</button></form>}
         {stageShowsProposalSent && versions.length > 0 && <div className="workflow-empty compact"><AlertCircle size={17}/><span>The lead is marked Proposal sent, but no saved version is marked Sent. Add the missing version details below; the existing lead stage will stay unchanged.</span></div>}
         {versions.length ? <div className="proposal-version-list">{versions.map(version => <article className={`proposal-version ${selectedProposal === version.id ? 'selected' : ''}`} key={version.id}>
           <div className="proposal-version-top"><div><b>{version.name}</b><small>Version {versions.length - versions.indexOf(version)} · {version.status}</small></div><b className="workflow-money">{formatMoney(version.amount)}</b></div>
-          <div className="proposal-version-meta">Created {version.created}<span className={`workflow-state ${version.status === 'Accepted' ? 'complete' : ''}`}>{version.status}</span></div>
+          {version.fileId && workflowFiles[version.fileId] && <a className="workflow-file-link" href={workflowFiles[version.fileId].data} download={workflowFiles[version.fileId].name}>Download proposal · {workflowFiles[version.fileId].name}</a>}<div className="proposal-version-meta">Created {version.created}<span className={`workflow-state ${version.status === 'Accepted' ? 'complete' : ''}`}>{version.status}</span></div>
           <div className="proposal-version-actions">{version.status === 'Draft' && <button onClick={() => sendProposal(version)}>Mark sent</button>}{version.status === 'Sent' && !accepted && <button onClick={() => { updateWorkflow({ selectedProposal: version.id }); setShowAcceptanceForm(true) }}>Record acceptance</button>}</div>
         </article>)}</div> : stageShowsProposalSent ? <div className="workflow-empty"><FileText size={19}/><b>Proposal marked as sent</b><span>The lead stage is Proposal sent, but version name, amount, and send date have not been recorded.</span><button className="workflow-quiet-button" onClick={() => setShowProposalForm(true)}>Add version details</button></div> : <div className="workflow-empty"><FileText size={19}/><b>No proposal versions yet</b><span>Create a draft to start tracking proposal progress.</span></div>}
-        {showAcceptanceForm && <form className="workflow-form acceptance-form" onSubmit={recordAcceptance}><div className="workflow-form-title"><CheckCircle2 size={16}/><b>Record client acceptance</b></div><label>Evidence type<CustomSelect ariaLabel="Evidence type" value={evidenceMethod} options={['Approval message', 'Signed file']} onChange={setEvidenceMethod}/></label><label>Evidence reference<input required value={evidence} onChange={event => setEvidence(event.target.value)} placeholder={evidenceMethod === 'Signed file' ? 'File name or storage reference' : 'Message, email, or approval reference'}/></label><label className="wide">Acceptance note<textarea required rows={2} value={acceptanceNote} onChange={event => setAcceptanceNote(event.target.value)} placeholder="Add a short note about the client’s approval."/></label><button className="workflow-primary-button" type="submit">Save acceptance</button></form>}
-        {acceptance && <div className="acceptance-record"><div><CheckCircle2 size={15}/><b>Client acceptance recorded</b><span>{acceptance.date}</span></div><p><span>{acceptance.method}</span>{acceptance.evidence}</p><p><span>Acceptance note</span>{acceptance.note}</p></div>}
+        {showAcceptanceForm && <form className="workflow-form acceptance-form" onSubmit={recordAcceptance}><div className="workflow-form-title"><CheckCircle2 size={16}/><b>Record client acceptance</b></div><label>Evidence type<CustomSelect ariaLabel="Evidence type" value={evidenceMethod} options={['Approval message', 'Signed file']} onChange={setEvidenceMethod}/></label><label>Evidence reference<input required value={evidence} onChange={event => setEvidence(event.target.value)} placeholder={evidenceMethod === 'Signed file' ? 'File name or storage reference' : 'Message, email, or approval reference'}/></label><label className="wide">Acceptance note<textarea required rows={2} value={acceptanceNote} onChange={event => setAcceptanceNote(event.target.value)} placeholder="Add a short note about the client’s approval."/></label><label className="wide">{evidenceMethod === 'Signed file' ? 'Signed approval file' : 'Approval attachment (optional)'} <small>PDF or image, up to 1 MB</small><input type="file" required={evidenceMethod === 'Signed file'} accept="application/pdf,image/jpeg,image/png,image/webp" onChange={event => setAcceptanceFile(event.target.files?.[0] ?? null)}/></label><button className="workflow-primary-button" type="submit">Save acceptance</button></form>}
+        {acceptance && <div className="acceptance-record"><div><CheckCircle2 size={15}/><b>Client acceptance recorded</b><span>{acceptance.date}</span></div><p><span>{acceptance.method}</span>{acceptance.evidence}</p><p><span>Acceptance note</span>{acceptance.note}</p>{acceptance.fileId && workflowFiles[acceptance.fileId] && <a className="workflow-file-link" href={workflowFiles[acceptance.fileId].data} download={workflowFiles[acceptance.fileId].name}>Download approval · {workflowFiles[acceptance.fileId].name}</a>}</div>}
+        {workflowError && <p className="workflow-error" role="alert">{workflowError}</p>}
         <p className="workflow-footnote">Proposal versions, approvals, and payment records are saved to your Supabase workspace.</p>
       </section>
 
