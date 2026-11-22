@@ -1,5 +1,5 @@
-import { mergeChanges, normalizeCollection, sameValue } from '../shared/crm'
-import { currentAccount, db, json, sameOrigin } from './account-core'
+import { mergeChanges, normalizeCollection, sameValue } from '../shared/crm.js'
+import { currentAccount, db, json, sameOrigin } from './account-core.js'
 
 async function handle(request: Request) {
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)

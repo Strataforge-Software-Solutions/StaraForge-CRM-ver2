@@ -1,4 +1,4 @@
-import { Account, currentAccount, db, env, hashOpaqueToken, hashPassword, issueSession, json, matchingTotpCounter, newTotpSecret, protectTotpSecret, revealTotpSecret, safeAccount, sameOrigin, sessionCookie, settings, signToken, verifyPassword } from './account-core'
+import { Account, currentAccount, db, env, hashOpaqueToken, hashPassword, issueSession, json, matchingTotpCounter, newTotpSecret, protectTotpSecret, revealTotpSecret, safeAccount, sameOrigin, sessionCookie, settings, signToken, verifyPassword } from './account-core.js'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 function googleResultRedirect(request: Request, stage: 'challenge' | 'enrollment', challenge: string) {
@@ -79,7 +79,7 @@ async function handle(request: Request) {
 
     if (action === 'verify-mfa' && request.method === 'POST') {
       const token = typeof body.challengeToken === 'string' ? body.challengeToken : ''
-      const { readToken } = await import('./account-core')
+      const { readToken } = await import('./account-core.js')
       const claims = await readToken(token)
       if (!claims || !['mfa', 'enroll'].includes(String(claims.purpose)) || typeof claims.sub !== 'string') return json({ error: 'This sign-in step expired. Start again.' }, 401)
       const account = await loadById(claims.sub)
@@ -242,7 +242,7 @@ async function handle(request: Request) {
       const clientId = env('GOOGLE_CLIENT_ID')
       if (!clientId) return json({ error: 'Google sign-in is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server.' }, 503)
       const state = Array.from(crypto.getRandomValues(new Uint8Array(24)), byte => byte.toString(16).padStart(2, '0')).join('')
-      const { readToken } = await import('./account-core')
+      const { readToken } = await import('./account-core.js')
       const stateToken = await signToken({ purpose: 'google-state', state }, 5)
       const redirectUri = `${new URL(request.url).origin}/api/auth?action=google-callback`
       const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'openid email profile', state: `${state}.${stateToken}`, prompt: 'select_account' })
@@ -256,7 +256,7 @@ async function handle(request: Request) {
       const separator = stateValue.indexOf('.')
       const stateId = separator < 0 ? '' : stateValue.slice(0, separator)
       const stateToken = separator < 0 ? '' : stateValue.slice(separator + 1)
-      const { readToken } = await import('./account-core')
+      const { readToken } = await import('./account-core.js')
       const stateClaims = await readToken(stateToken)
       const stateCookie = request.headers.get('cookie')?.match(/(?:^|;\s*)sf_google_state=([^;]+)/)?.[1]
       if (!stateClaims || stateClaims.purpose !== 'google-state' || stateClaims.state !== stateId || stateCookie !== stateId) return googleFailureRedirect(request)
@@ -281,7 +281,7 @@ async function handle(request: Request) {
 
     if (action === 'enrollment-secret' && request.method === 'GET') {
       const token = new URL(request.url).searchParams.get('challengeToken') ?? ''
-      const { readToken } = await import('./account-core')
+      const { readToken } = await import('./account-core.js')
       const claims = await readToken(token)
       if (!claims || claims.purpose !== 'enroll' || typeof claims.sub !== 'string') return json({ error: 'This setup step expired. Start sign-in again.' }, 401)
       const account = await loadById(claims.sub)
