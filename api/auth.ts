@@ -27,13 +27,14 @@ async function auditEvent(workspaceId: string, actorId: string | null, targetId:
   try { await db('user_audit_events', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ workspace_id: workspaceId, actor_user_id: actorId, target_user_id: targetId, action }) }) }
   catch { console.error(`Could not save account audit event: ${action}`) }
 }
-async function admin(request: Request) {
+type AdminResult = { user: Account; response?: never } | { response: Response; user?: never }
+async function admin(request: Request): Promise<AdminResult> {
   const user = await currentAccount(request)
   if (!user) return { response: json({ error: 'Your session expired. Sign in again.' }, 401) }
   if (!['owner', 'admin'].includes(user.role)) return { response: json({ error: 'Only workspace owners and admins can manage users.' }, 403) }
   return { user }
 }
-async function handle(request: Request) {
+async function handle(request: Request): Promise<Response> {
   if (!['GET', 'POST'].includes(request.method)) return json({ error: 'Method not allowed.' }, 405)
   if (!sameOrigin(request)) return json({ error: 'This request must come from the StrataForge app.' }, 403)
   const { projectUrl, key, signingSecret } = settings()
@@ -132,14 +133,14 @@ async function handle(request: Request) {
 
     if (action === 'list' && request.method === 'GET') {
       const authorization = await admin(request)
-      if ('response' in authorization) return authorization.response
+      if (authorization.response) return authorization.response
       const rows = await db(`users?select=id,workspace_id,email,display_name,role,status,password_hash,totp_secret,totp_pending_secret,totp_last_verified_counter,session_version,created_at&workspace_id=eq.${encodeURIComponent(authorization.user.workspace_id)}&order=created_at.asc`) as Account[]
       return json({ members: rows.map(safeAccount) })
     }
 
     if (action === 'reset-account' && request.method === 'POST') {
       const authorization = await admin(request)
-      if ('response' in authorization) return authorization.response
+      if (authorization.response) return authorization.response
       const userId = typeof body.userId === 'string' ? body.userId : ''
       const target = userId ? await loadById(userId) : null
       if (!target || target.workspace_id !== authorization.user.workspace_id) return json({ error: 'Workspace user could not be found.' }, 404)
@@ -154,7 +155,7 @@ async function handle(request: Request) {
 
     if (action === 'update-account' && request.method === 'POST') {
       const authorization = await admin(request)
-      if ('response' in authorization) return authorization.response
+      if (authorization.response) return authorization.response
       const userId = typeof body.userId === 'string' ? body.userId : ''
       const target = userId ? await loadById(userId) : null
       if (!target || target.workspace_id !== authorization.user.workspace_id) return json({ error: 'Workspace user could not be found.' }, 404)
@@ -175,7 +176,7 @@ async function handle(request: Request) {
 
     if (action === 'set-password' && request.method === 'POST') {
       const authorization = await admin(request)
-      if ('response' in authorization) return authorization.response
+      if (authorization.response) return authorization.response
       const userId = typeof body.userId === 'string' ? body.userId : ''
       const password = typeof body.password === 'string' ? body.password : ''
       const target = userId ? await loadById(userId) : null
@@ -189,7 +190,7 @@ async function handle(request: Request) {
 
     if (action === 'delete-account' && request.method === 'POST') {
       const authorization = await admin(request)
-      if ('response' in authorization) return authorization.response
+      if (authorization.response) return authorization.response
       const userId = typeof body.userId === 'string' ? body.userId : ''
       const target = userId ? await loadById(userId) : null
       if (!target || target.workspace_id !== authorization.user.workspace_id) return json({ error: 'Workspace user could not be found.' }, 404)
@@ -202,7 +203,7 @@ async function handle(request: Request) {
 
     if (action === 'invite' && request.method === 'POST') {
       const authorization = await admin(request)
-      if ('response' in authorization) return authorization.response
+      if (authorization.response) return authorization.response
       const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
       const displayName = typeof body.displayName === 'string' ? body.displayName.trim().slice(0, 120) : ''
       const role = body.role
@@ -320,3 +321,4 @@ export default async function handler(req: any, res: any) {
     res.end(JSON.stringify({ error: 'The account service could not complete the request.' }))
   }
 }
+
