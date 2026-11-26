@@ -1608,3 +1608,43 @@ button,.nav-item,.icon-button,.directory-tabs button,.calendar-icon-button{touch
 .crm-cash-track{height:8px;background:#eaf0f5;border-radius:6px;flex:1}.crm-cash-track i{display:block;background:#18ad83;height:100%;border-radius:6px}.crm-cash-report{font-size:var(--text-14)}.crm-cash-report>section{margin:16px 0}.crm-stage-filter{display:flex;align-items:center;gap:8px;font-size:var(--text-12);margin-bottom:10px}.crm-stage-filter select{max-width:220px}.kanban-board.single-stage{grid-template-columns:minmax(230px,420px)}.crm-move-stage{display:flex;align-items:center;gap:6px;color:#6c7d91;font-size:var(--text-12)}.crm-move-stage select{min-width:0;flex:1;border:1px solid #dde5ed;border-radius:5px;background:white;color:#475d76;padding:5px;font:inherit}.crm-import-preview{max-height:280px;overflow:auto;margin:10px 0}.crm-import-preview>div{display:grid;gap:4px;padding:8px;border-bottom:1px solid #e5eaf0;font-size:var(--text-12)}.crm-import-preview span{color:#728398}.crm-upload{display:grid;gap:8px;font-size:var(--text-14)}.crm-panel summary{cursor:pointer;font-size:var(--text-14);font-weight:600}.database-error-banner button{margin-left:8px;border:1px solid currentColor;border-radius:5px;padding:5px 9px;background:white;color:inherit}
 @media(max-width:700px){.crm-panel{padding:14px}.crm-form{grid-template-columns:1fr}.crm-panel button,.crm-form input,.crm-form select,.crm-form>button{min-height:44px;font-size:var(--text-14)}.crm-attention{align-items:stretch;flex-direction:column}.crm-summary{gap:8px}.crm-summary>span{min-width:115px}.crm-list>div,.crm-list>.crm-followup-row{align-items:flex-start;gap:10px}.crm-move-stage{font-size:var(--text-12)}.crm-move-stage select{min-height:40px}.crm-list time{max-width:100px}.crm-cash-report .crm-list>div{flex-wrap:wrap}.crm-cash-track{min-width:60px}.database-error-banner{font-size:var(--text-12);line-height:1.5}.directory-panel-foot{flex-wrap:wrap;gap:10px}}
 
+/* Auth screens must grow and scroll when their setup form is taller than the viewport. */
+@media(max-height:900px) and (min-width:851px){
+  .workspace-auth-screen{display:block;height:100dvh;min-height:100dvh;overflow-x:hidden;overflow-y:auto;padding:0}
+  .workspace-auth-card-featured{height:auto;min-height:100dvh;align-items:stretch}
+  .workspace-auth-card-featured .workspace-auth-content{height:auto;align-content:start;padding-block:clamp(26px,4vh,48px)}
+  .workspace-auth-card-featured .workspace-auth-visual{height:auto;min-height:100dvh}
+  .workspace-auth-card-invite .workspace-auth-content{align-content:start}
+}
+@media(max-width:850px){
+  .workspace-auth-screen{display:grid;place-items:start center;height:100dvh;min-height:100dvh;overflow-x:hidden;overflow-y:auto;padding:clamp(14px,4vw,28px)}
+  .workspace-auth-card-featured,.workspace-auth-card-invite{width:min(100%,560px);height:auto;min-height:0;grid-template-columns:minmax(0,1fr);overflow:visible;margin:auto 0;border:1px solid #e1e7ed;border-radius:18px;box-shadow:0 20px 56px #1d2b3f16}
+  .workspace-auth-card-featured .workspace-auth-content,.workspace-auth-card-invite .workspace-auth-content{width:100%;height:auto;align-content:start;padding:clamp(24px,6vw,42px)}
+  .workspace-auth-card-featured .workspace-auth-brand{margin-bottom:24px}
+  .workspace-auth-card-invite .workspace-auth-brand{margin-bottom:18px}
+  .workspace-auth-visual{display:none}
+}
+@media(max-width:520px){
+  .workspace-auth-screen{padding:12px max(12px,env(safe-area-inset-right)) 12px max(12px,env(safe-area-inset-left))}
+  .workspace-auth-card-featured,.workspace-auth-card-invite{width:100%;border-radius:15px}
+  .workspace-auth-card-featured .workspace-auth-content,.workspace-auth-card-invite .workspace-auth-content{padding:22px 20px}
+  .workspace-auth-card-challenge .workspace-auth-content{padding:25px 20px}
+  .workspace-auth-card-featured .workspace-auth-brand{margin-bottom:20px}
+  .workspace-auth-card-invite .workspace-auth-brand{margin-bottom:14px}
+  .workspace-auth-card-invite .workspace-auth-wordmark-frame{width:min(100%,220px)}
+}
+@media(max-width:850px) and (max-height:740px){
+  .workspace-auth-screen{place-items:start center;padding-top:max(10px,env(safe-area-inset-top));padding-bottom:max(10px,env(safe-area-inset-bottom))}
+  .workspace-auth-card-featured .workspace-auth-content,.workspace-auth-card-invite .workspace-auth-content{padding-top:18px;padding-bottom:20px}
+  .workspace-auth-card-featured .workspace-auth-brand{margin-bottom:15px}
+  .workspace-auth-intro{margin-bottom:18px}
+  .workspace-auth-card-invite .workspace-auth-form{gap:8px;margin-top:13px}
+}
+.workspace-auth-defer{display:grid;gap:8px;margin-top:12px;text-align:center}
+.workspace-auth-secondary{min-height:42px;display:flex;align-items:center;justify-content:center;gap:7px;padding:0 14px;border:1px solid #dfe5ec;border-radius:9px;background:#fff;color:#52677e;font:600 var(--text-12) var(--font-body,'Inter',sans-serif);cursor:pointer;transition:border-color .16s ease,background .16s ease,color .16s ease}
+.workspace-auth-secondary:hover:not(:disabled){border-color:#f1b89e;background:#fffaf7;color:#c94e20}
+.workspace-auth-secondary:focus-visible{outline:2px solid #f4794b;outline-offset:2px}
+.workspace-auth-secondary:disabled{opacity:.65;cursor:wait}
+.workspace-auth-defer>small{color:#7a8898;font-size:var(--text-12);line-height:1.45}
+@media(prefers-reduced-motion:reduce){.workspace-auth-secondary{transition:none}}
+

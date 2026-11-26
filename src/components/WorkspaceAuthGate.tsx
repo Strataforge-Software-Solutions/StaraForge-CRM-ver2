@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent, typ
 import { ArrowRight, Check, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Smartphone, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { configureDatabaseWorkspace } from '../lib/database'
-import { authChangeEvent, authSessionStorageKey, completeInvite, getBootstrapStatus, getCurrentSession, setBootstrapPassword, signInWithPassword, signOut, verifyTotp, type WorkspaceSession } from '../lib/workspaceAccount'
+import { authChangeEvent, authSessionStorageKey, completeInvite, deferInviteEnrollment, getBootstrapStatus, getCurrentSession, setBootstrapPassword, signInWithPassword, signOut, verifyTotp, type WorkspaceSession } from '../lib/workspaceAccount'
 
 type Phase = 'loading' | 'sign-in' | 'enrollment' | 'challenge' | 'invite-password' | 'bootstrap' | 'workspace'
 const pendingInviteStorageKey = 'strataforge.workspace.pending-invite'
@@ -21,6 +21,7 @@ export default function WorkspaceAuthGate({ children }: { children: ReactNode })
   const [bootstrapToken, setBootstrapToken] = useState('')
   const [inviteToken, setInviteToken] = useState('')
   const [challengeToken, setChallengeToken] = useState('')
+  const [canDeferEnrollment, setCanDeferEnrollment] = useState(false)
   const [totpSecret, setTotpSecret] = useState('')
   const [totpUri, setTotpUri] = useState('')
   const [totpSetupMethod, setTotpSetupMethod] = useState<'qr' | 'manual'>('qr')
@@ -128,8 +129,8 @@ export default function WorkspaceAuthGate({ children }: { children: ReactNode })
     return () => { window.removeEventListener(authChangeEvent, handleAuthChange); window.removeEventListener('storage', handleStorage) }
   }, [loadSession])
 
-  const beginStage = (stage: 'challenge' | 'enrollment', challenge: string, secret = '', uri = '') => {
-    setChallengeToken(challenge); setTotpSecret(secret); setTotpUri(uri); setTotpSetupMethod(uri ? 'qr' : 'manual'); setCode(''); setCodeAnimationStart(-1); setError(''); setPhase(stage)
+  const beginStage = (stage: 'challenge' | 'enrollment', challenge: string, secret = '', uri = '', canDefer = false) => {
+    setChallengeToken(challenge); setCanDeferEnrollment(stage === 'enrollment' && canDefer); setTotpSecret(secret); setTotpUri(uri); setTotpSetupMethod(uri ? 'qr' : 'manual'); setCode(''); setCodeAnimationStart(-1); setError(''); setPhase(stage)
   }
   const handleSignIn = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setSignInFailed(false); setError('')
@@ -142,8 +143,19 @@ export default function WorkspaceAuthGate({ children }: { children: ReactNode })
     if (password.length < 12) { setError('Use at least 12 characters for your password.'); return }
     if (password !== passwordConfirm) { setError('The passwords do not match.'); return }
     setBusy(true); setError('')
-    try { const result = await completeInvite(inviteToken, password); sessionStorage.removeItem(pendingInviteStorageKey); setInviteToken(''); setPassword(''); setPasswordConfirm(''); beginStage(result.stage, result.challengeToken, result.secret, result.uri) }
+    try { const result = await completeInvite(inviteToken, password); sessionStorage.removeItem(pendingInviteStorageKey); setInviteToken(''); setEmail(result.email); setPassword(''); setPasswordConfirm(''); beginStage(result.stage, result.challengeToken, result.secret, result.uri, result.canDeferSetup) }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'The invitation could not be completed.') }
+    finally { setBusy(false) }
+  }
+  const handleDeferEnrollment = async () => {
+    if (!canDeferEnrollment || busy) return
+    setBusy(true); setError('')
+    try {
+      await deferInviteEnrollment(challengeToken)
+      setCanDeferEnrollment(false); setChallengeToken(''); setTotpSecret(''); setTotpUri(''); setCode('')
+      setNotice('Password saved. Set up an authenticator at your next sign-in; workspace access stays locked until setup is complete.')
+      setPhase('sign-in')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Authenticator setup could not be postponed.') }
     finally { setBusy(false) }
   }
   const handleVerify = async (event: FormEvent) => {
@@ -236,7 +248,7 @@ export default function WorkspaceAuthGate({ children }: { children: ReactNode })
       <form className="workspace-auth-form" onSubmit={handleVerify}>
         <label>Authenticator code<span className="workspace-auth-code-entry" onClick={() => { const input = codeInputRef.current; input?.focus(); input?.setSelectionRange(code.length, code.length) }}><span className="workspace-auth-code-cells" aria-hidden="true">{Array.from({ length: 6 }, (_, index) => { const entering = index >= codeAnimationStart && index < code.length; return <Fragment key={entering ? `${index}-${codeAnimationId}` : index}><span className="workspace-auth-code-cell" data-active={index === Math.min(code.length, 5)} data-filled={index < code.length} data-entering={entering}>{code[index] ?? '0'}</span>{index === 2 && <span className="workspace-auth-code-separator">–</span>}</Fragment> })}</span><input ref={codeInputRef} className="workspace-auth-code-native" autoFocus inputMode="numeric" autoComplete="one-time-code" aria-label="Authenticator code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={event => updateAuthenticatorCode(event.target.value)}/></span></label>
         <button className="workspace-auth-primary" type="submit" disabled={busy || code.length !== 6}>{busy ? <LoaderCircle className="workspace-auth-spinner" size={15}/> : <ArrowRight size={15}/>} {phase === 'enrollment' ? 'Enable and continue' : 'Verify and continue'}</button>
-      </form><button type="button" className="workspace-auth-link" onClick={() => void handleSignOut()}>Back to sign in</button>
+      </form>{phase === 'enrollment' && canDeferEnrollment && <div className="workspace-auth-defer"><button type="button" className="workspace-auth-secondary" onClick={() => void handleDeferEnrollment()} disabled={busy}>{busy ? <LoaderCircle className="workspace-auth-spinner" size={14}/> : null}Set it up Later</button><small>Return at your next sign-in. Authenticator setup is required before you can access the workspace.</small></div>}<button type="button" className="workspace-auth-link" onClick={() => void handleSignOut()}>Back to sign in</button>
       </>}
       {notice && <div className="workspace-config-check-result ready" role="status">{notice}</div>}
       {error && <div className="workspace-auth-error" role="alert">{error}</div>}

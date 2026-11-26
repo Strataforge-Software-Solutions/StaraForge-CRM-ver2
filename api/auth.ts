@@ -82,13 +82,13 @@ async function handle(request: Request): Promise<Response> {
       const token = typeof body.challengeToken === 'string' ? body.challengeToken : ''
       const { readToken } = await import('./account-core.js')
       const claims = await readToken(token)
-      if (!claims || !['mfa', 'enroll'].includes(String(claims.purpose)) || typeof claims.sub !== 'string') return json({ error: 'This sign-in step expired. Start again.' }, 401)
+      if (!claims || !['mfa', 'enroll', 'invite-enroll'].includes(String(claims.purpose)) || typeof claims.sub !== 'string') return json({ error: 'This sign-in step expired. Start again.' }, 401)
       const account = await loadById(claims.sub)
       const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local'
       const rateKey = await hashOpaqueToken(`mfa:${account?.id ?? claims.sub}:${ip}`)
       const allowed = await db('rpc/register_auth_login_attempt', { method: 'POST', body: JSON.stringify({ target_hash: rateKey }) }) as boolean
       if (!allowed) return json({ error: 'Too many authenticator attempts. Wait 15 minutes and start sign-in again.' }, 429)
-      const enrolling = claims.purpose === 'enroll'
+      const enrolling = claims.purpose === 'enroll' || claims.purpose === 'invite-enroll'
       const counter = account ? await matchingTotpCounter(await revealTotpSecret(enrolling ? account.totp_pending_secret : account.totp_secret), String(body.code ?? '')) : null
       if (!account || !['active', ...(enrolling ? ['mfa_setup'] : [])].includes(account.status) || counter === null || counter <= Number(account.totp_last_verified_counter ?? -1)) return json({ error: 'That authenticator code is incorrect or already used. Try again.' }, 401)
       const consumed = await db('rpc/consume_totp_counter', { method: 'POST', body: JSON.stringify({ target_user: account.id, next_counter: counter }) }) as boolean
@@ -235,8 +235,21 @@ async function handle(request: Request): Promise<Response> {
       await auditEvent(account.workspace_id, account.id, account.id, 'invitation_password_set')
       const secret = newTotpSecret()
       await db(`users?id=eq.${encodeURIComponent(account.id)}`, { method: 'PATCH', body: JSON.stringify({ totp_pending_secret: await protectTotpSecret(secret), totp_last_verified_counter: null }) })
-      const challenge = await signToken({ purpose: 'enroll', sub: account.id, wid: account.workspace_id }, 10)
-      return json({ stage: 'enrollment', challengeToken: challenge, secret, uri: `otpauth://totp/${encodeURIComponent(`StrataForge CRM:${account.email}`)}?secret=${secret}&issuer=StrataForge%20CRM&algorithm=SHA1&digits=6&period=30` })
+      const challenge = await signToken({ purpose: 'invite-enroll', sub: account.id, wid: account.workspace_id }, 10)
+      return json({ stage: 'enrollment', challengeToken: challenge, secret, uri: `otpauth://totp/${encodeURIComponent(`StrataForge CRM:${account.email}`)}?secret=${secret}&issuer=StrataForge%20CRM&algorithm=SHA1&digits=6&period=30`, canDeferSetup: true, email: account.email })
+    }
+
+    if (action === 'defer-invite-enrollment' && request.method === 'POST') {
+      const token = typeof body.challengeToken === 'string' ? body.challengeToken : ''
+      const { readToken } = await import('./account-core.js')
+      const claims = await readToken(token)
+      if (!claims || claims.purpose !== 'invite-enroll' || typeof claims.sub !== 'string') return json({ error: 'This account setup step expired. Start sign-in again.' }, 401)
+      const account = await loadById(claims.sub)
+      if (!account || account.status !== 'mfa_setup' || account.totp_secret || !account.totp_pending_secret) return json({ error: 'Authenticator setup can no longer be postponed for this account.' }, 409)
+      const deferred = await db(`users?id=eq.${encodeURIComponent(account.id)}&workspace_id=eq.${encodeURIComponent(account.workspace_id)}&status=eq.mfa_setup&totp_pending_secret=not.is.null`, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ totp_pending_secret: null, totp_last_verified_counter: null }) }) as unknown[]
+      if (!deferred?.length) return json({ error: 'Authenticator setup has already changed. Sign in again to continue.' }, 409)
+      await auditEvent(account.workspace_id, account.id, account.id, 'invite_mfa_setup_deferred')
+      return json({ ok: true })
     }
 
     if (action === 'google-start' && request.method === 'GET') {
@@ -284,7 +297,7 @@ async function handle(request: Request): Promise<Response> {
       const token = new URL(request.url).searchParams.get('challengeToken') ?? ''
       const { readToken } = await import('./account-core.js')
       const claims = await readToken(token)
-      if (!claims || claims.purpose !== 'enroll' || typeof claims.sub !== 'string') return json({ error: 'This setup step expired. Start sign-in again.' }, 401)
+      if (!claims || !['enroll', 'invite-enroll'].includes(String(claims.purpose)) || typeof claims.sub !== 'string') return json({ error: 'This setup step expired. Start sign-in again.' }, 401)
       const account = await loadById(claims.sub)
       if (!account || !['active', 'mfa_setup'].includes(account.status)) return json({ error: 'This account is unavailable.' }, 403)
       const secret = await revealTotpSecret(account.totp_pending_secret)

@@ -52,7 +52,10 @@ export async function verifyTotp(_session: WorkspaceSession | null, challengeTok
   return session
 }
 export async function completeInvite(inviteToken: string, password: string) {
-  return api<{ stage: 'enrollment'; challengeToken: string; secret: string; uri: string }>('/api/auth', { method: 'POST', body: JSON.stringify({ action: 'complete-invite', inviteToken, password }) })
+  return api<{ stage: 'enrollment'; challengeToken: string; secret: string; uri: string; canDeferSetup: boolean; email: string }>('/api/auth', { method: 'POST', body: JSON.stringify({ action: 'complete-invite', inviteToken, password }) })
+}
+export async function deferInviteEnrollment(challengeToken: string) {
+  return api<{ ok: boolean }>('/api/auth', { method: 'POST', body: JSON.stringify({ action: 'defer-invite-enrollment', challengeToken }) })
 }
 export async function setBootstrapPassword(email: string, password: string, bootstrapToken: string) {
   return api<{ ok: boolean }>('/api/auth', { method: 'POST', body: JSON.stringify({ action: 'bootstrap-password', email, password, bootstrapToken }) })
