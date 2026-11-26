@@ -295,6 +295,9 @@ async function handle(request: Request): Promise<Response> {
 
     return json({ error: 'Unknown account action.' }, 404)
   } catch (cause) {
+    if (cause instanceof Error && cause.name === 'AuthenticatorSecretUnavailable') {
+      return json({ error: 'We could not read this saved authenticator setup. Ask another workspace admin to reset this account. If all admins are affected, restore the previous AUTH_SESSION_SECRET in Vercel and redeploy.' }, 503)
+    }
     return json({ error: cause instanceof Error ? cause.message : 'The account request could not be completed.' }, 500)
   }
 }

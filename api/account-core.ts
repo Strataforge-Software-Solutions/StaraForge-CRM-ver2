@@ -112,7 +112,14 @@ export async function revealTotpSecret(secret: string | null) {
   const packed = unb64(secret.slice(4))
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(settings().signingSecret))
   const key = await crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['decrypt'])
-  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: packed.slice(0, 12) }, key, packed.slice(12))
+  let plaintext: ArrayBuffer
+  try {
+    plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: packed.slice(0, 12) }, key, packed.slice(12))
+  } catch {
+    const error = new Error('Stored authenticator secret cannot be decrypted.')
+    error.name = 'AuthenticatorSecretUnavailable'
+    throw error
+  }
   return new TextDecoder().decode(plaintext)
 }
 export async function currentAccount(request: Request) {
